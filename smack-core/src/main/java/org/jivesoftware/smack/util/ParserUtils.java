@@ -19,10 +19,21 @@ package org.jivesoftware.smack.util;
 import java.io.IOException;
 import java.util.Locale;
 
+import org.jxmpp.jid.BareJid;
+import org.jxmpp.jid.Jid;
+import org.jxmpp.jid.impl.JidCreate;
+import org.jxmpp.jid.parts.Resourcepart;
+import org.jxmpp.stringprep.XmppStringprepException;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
 public class ParserUtils {
+
+    /**
+     * The constant String "jid".
+     */
+    public static final String JID = "jid";
+
     public static void assertAtStartTag(XmlPullParser parser) throws XmlPullParserException {
         assert(parser.getEventType() == XmlPullParser.START_TAG);
     }
@@ -37,6 +48,38 @@ public class ParserUtils {
         while (!(event == XmlPullParser.END_TAG && parser.getDepth() == depth)) {
             event = parser.next();
         }
+    }
+
+    public static Jid getJidAttribute(XmlPullParser parser) throws XmppStringprepException {
+        return getJidAttribute(parser, JID);
+    }
+
+    public static Jid getJidAttribute(XmlPullParser parser, String name) throws XmppStringprepException {
+        final String jidString = parser.getAttributeValue("", name);
+        if (jidString == null) {
+            return null;
+        }
+        return JidCreate.from(jidString);
+    }
+
+    public static BareJid getBareJidAttribute(XmlPullParser parser) throws XmppStringprepException {
+        return getBareJidAttribute(parser, JID);
+    }
+
+    public static BareJid getBareJidAttribute(XmlPullParser parser, String name) throws XmppStringprepException {
+        final String jidString = parser.getAttributeValue("", name);
+        if (jidString == null) {
+            return null;
+        }
+        return JidCreate.bareFrom(jidString);
+    }
+
+    public static Resourcepart getResourcepartAttribute(XmlPullParser parser, String name) throws XmppStringprepException {
+        final String resourcepartString = parser.getAttributeValue("", name);
+        if (resourcepartString == null) {
+            return null;
+        }
+        return Resourcepart.from(resourcepartString);
     }
 
     /**

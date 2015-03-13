@@ -16,20 +16,16 @@
  */
 package org.jivesoftware.smackx.hoxt.provider;
 
-import org.jivesoftware.smack.SmackException;
 import org.jivesoftware.smack.packet.NamedElement;
 import org.jivesoftware.smack.provider.IQProvider;
 import org.jivesoftware.smack.util.StringUtils;
 import org.jivesoftware.smackx.hoxt.packet.AbstractHttpOverXmpp;
-import org.jivesoftware.smackx.shim.packet.Header;
 import org.jivesoftware.smackx.shim.packet.HeadersExtension;
-import org.jivesoftware.smackx.shim.provider.HeaderProvider;
+import org.jivesoftware.smackx.shim.provider.HeadersProvider;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
 
 /**
  * Abstract parent for Req and Resp packet providers.
@@ -39,8 +35,6 @@ import java.util.Set;
  */
 public abstract class AbstractHttpOverXmppProvider<H extends AbstractHttpOverXmpp> extends IQProvider<H> {
 
-    private static final String ELEMENT_HEADERS = "headers";
-    private static final String ELEMENT_HEADER = "header";
     private static final String ELEMENT_DATA = "data";
     private static final String ELEMENT_TEXT = "text";
     private static final String ELEMENT_BASE_64 = "base64";
@@ -60,19 +54,17 @@ public abstract class AbstractHttpOverXmppProvider<H extends AbstractHttpOverXmp
      * @param parser      parser
      * @param elementName name of concrete implementation of this element
      * @param body        parent Body element
-     * @throws IOException 
-     * @throws XmlPullParserException 
-     * @throws SmackException 
+     * @throws Exception 
      */
-    protected void parseHeadersAndData(XmlPullParser parser, String elementName, AbstractHttpOverXmpp body) throws XmlPullParserException, IOException, SmackException {
+    protected void parseHeadersAndData(XmlPullParser parser, String elementName, AbstractHttpOverXmpp body) throws Exception {
         boolean done = false;
 
         while (!done) {
             int eventType = parser.next();
 
             if (eventType == XmlPullParser.START_TAG) {
-                if (parser.getName().equals(ELEMENT_HEADERS)) {
-                    HeadersExtension headersExtension = parseHeaders(parser);
+                if (parser.getName().equals(HeadersExtension.ELEMENT)) {
+                    HeadersExtension headersExtension = HeadersProvider.INSTANCE.parse(parser);
                     body.setHeaders(headersExtension);
                 } else if (parser.getName().endsWith(ELEMENT_DATA)) {
                     AbstractHttpOverXmpp.Data data = parseData(parser);
@@ -86,28 +78,6 @@ public abstract class AbstractHttpOverXmppProvider<H extends AbstractHttpOverXmp
                 }
             }
         }
-    }
-
-    private HeadersExtension parseHeaders(XmlPullParser parser) throws XmlPullParserException, IOException, SmackException {
-        HeaderProvider provider = new HeaderProvider();
-        Set<Header> set = new HashSet<Header>();
-        boolean done = false;
-
-        while (!done) {
-            int eventType = parser.next();
-
-            if (eventType == XmlPullParser.START_TAG) {
-                if (parser.getName().equals(ELEMENT_HEADER)) {
-                    Header header = provider.parse(parser);
-                    set.add(header);
-                }
-            } else if (eventType == XmlPullParser.END_TAG) {
-                if (parser.getName().equals(ELEMENT_HEADERS)) {
-                    done = true;
-                }
-            }
-        }
-        return new HeadersExtension(set);
     }
 
     private AbstractHttpOverXmpp.Data parseData(XmlPullParser parser) throws XmlPullParserException, IOException {

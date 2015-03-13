@@ -16,6 +16,7 @@
  */
 package org.jivesoftware.smack.compression;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -35,7 +36,11 @@ public abstract class XMPPInputOutputStream {
         XMPPInputOutputStream.flushMethod = flushMethod;
     }
 
-    protected String compressionMethod;
+    protected final String compressionMethod;
+
+    protected XMPPInputOutputStream(String compressionMethod) {
+        this.compressionMethod = compressionMethod;
+    }
 
     public String getCompressionMethod() {
         return compressionMethod;
@@ -43,9 +48,9 @@ public abstract class XMPPInputOutputStream {
 
     public abstract boolean isSupported();
 
-    public abstract InputStream getInputStream(InputStream inputStream) throws Exception;
+    public abstract InputStream getInputStream(InputStream inputStream) throws IOException;
 
-    public abstract OutputStream getOutputStream(OutputStream outputStream) throws Exception;
+    public abstract OutputStream getOutputStream(OutputStream outputStream) throws IOException;
 
     public enum FlushMethod {
         FULL_FLUSH,

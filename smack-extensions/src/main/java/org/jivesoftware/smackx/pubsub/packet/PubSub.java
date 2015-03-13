@@ -17,8 +17,9 @@
 package org.jivesoftware.smackx.pubsub.packet;
 
 import org.jivesoftware.smack.packet.IQ;
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smackx.pubsub.PubSubElementType;
+import org.jxmpp.jid.Jid;
 
 /**
  * The standard PubSub extension of an {@link IQ} packet.  This is the topmost
@@ -32,23 +33,18 @@ public class PubSub extends IQ
     public static final String ELEMENT = "pubsub";
     public static final String NAMESPACE = "http://jabber.org/protocol/pubsub";
 
-	private PubSubNamespace ns = PubSubNamespace.BASIC;
-
 	public PubSub() {
         super(ELEMENT, NAMESPACE);
 	}
 
-	public PubSub(String to, Type type) {
-        this();
-        setTo(to);
-        setType(type);
+	public PubSub(PubSubNamespace ns) {
+        super(ELEMENT, ns.getXmlns());
     }
 
-    public PubSub(String to, Type type, PubSubNamespace ns) {
-        this(to, type);
-        if (ns != null) {
-            setPubSubNamespace(ns);
-        }
+    public PubSub(Jid to, Type type, PubSubNamespace ns) {
+        super(ELEMENT, (ns == null ? PubSubNamespace.BASIC : ns).getXmlns());
+        setTo(to);
+        setType(type);
     }
 
 	/**
@@ -60,49 +56,12 @@ public class PubSub extends IQ
         return ELEMENT;
     }
 
-    /** 
-     * Returns the XML namespace of the extension sub-packet root element.
-     * According the specification the namespace is 
-     * http://jabber.org/protocol/pubsub with a specific fragment depending
-     * on the request.  The namespace is defined at <a href="http://xmpp.org/registrar/namespaces.html">XMPP Registrar</a> at
-     * 
-     * The default value has no fragment.
-     * 
-     * @return the XML namespace of the packet extension.
-     */
-    public String getNamespace() 
-    {
-        return ns.getXmlns();
-    }
-
-    /**
-     * Set the namespace for the packet if it something other than the default
-     * case of {@link PubSubNamespace#BASIC}.  The {@link #getNamespace()} method will return 
-     * the result of calling {@link PubSubNamespace#getXmlns()} on the specified enum.
-     * 
-     * @param ns - The new value for the namespace.
-     */
-	public void setPubSubNamespace(PubSubNamespace ns)
-	{
-		this.ns = ns;
-	}
-
     @SuppressWarnings("unchecked")
-    public <PE extends PacketExtension> PE getExtension(PubSubElementType elem)
+    public <PE extends ExtensionElement> PE getExtension(PubSubElementType elem)
 	{
 		return (PE) getExtension(elem.getElementName(), elem.getNamespace().getXmlns());
 	}
 
-	/**
-	 * Returns the current value of the namespace.  The {@link #getNamespace()} method will return 
-     * the result of calling {@link PubSubNamespace#getXmlns()} this value.
-	 * 
-	 * @return The current value of the namespace.
-	 */
-	public PubSubNamespace getPubSubNamespace()
-	{
-		return ns;
-	}
     /**
      * Returns the XML representation of a pubsub element according the specification.
      * 
@@ -128,7 +87,7 @@ public class PubSub extends IQ
         return xml;
     }
 
-    public static PubSub createPubsubPacket(String to, Type type, PacketExtension extension, PubSubNamespace ns) {
+    public static PubSub createPubsubPacket(Jid to, Type type, ExtensionElement extension, PubSubNamespace ns) {
         PubSub pubSub = new PubSub(to, type, ns);
         pubSub.addExtension(extension);
         return pubSub;

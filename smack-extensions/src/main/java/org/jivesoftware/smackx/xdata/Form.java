@@ -21,7 +21,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.StringTokenizer;
 
-import org.jivesoftware.smack.packet.Packet;
+import org.jivesoftware.smack.packet.Stanza;
 import org.jivesoftware.smackx.xdata.packet.DataForm;
 
 /**
@@ -43,11 +43,6 @@ import org.jivesoftware.smackx.xdata.packet.DataForm;
  */
 public class Form {
 
-    public static final String TYPE_FORM = "form";
-    public static final String TYPE_SUBMIT = "submit";
-    public static final String TYPE_CANCEL = "cancel";
-    public static final String TYPE_RESULT = "result";
-
     private DataForm dataForm;
 
     /**
@@ -58,7 +53,7 @@ public class Form {
      * @return the data form parsed from the packet or <tt>null</tt> if there was not
      *      a form in the packet.
      */
-    public static Form getFormFrom(Packet packet) {
+    public static Form getFormFrom(Stanza packet) {
         // Check if the packet includes the DataForm extension
         DataForm dataForm = DataForm.from(packet);
         if (dataForm != null) {
@@ -80,20 +75,11 @@ public class Form {
     }
     
     /**
-     * Creates a new Form of a given type from scratch.<p>
-     *  
-     * Possible form types are:
-     * <ul>
-     *  <li>form -> Indicates a form to fill out.</li>
-     *  <li>submit -> The form is filled out, and this is the data that is being returned from 
-     * the form.</li>
-     *  <li>cancel -> The form was cancelled. Tell the asker that piece of information.</li>
-     *  <li>result -> Data results being returned from a search, or some other query.</li>
-     * </ul>
-     * 
+     * Creates a new Form of a given type from scratch.
+     *
      * @param type the form's type (e.g. form, submit,cancel,result).
      */
-    public Form(String type) {
+    public Form(DataForm.Type type) {
         this.dataForm = new DataForm(type);
     }
     
@@ -125,11 +111,14 @@ public class Form {
         if (field == null) {
             throw new IllegalArgumentException("Field not found for the specified variable name.");
         }
-        if (!FormField.TYPE_TEXT_MULTI.equals(field.getType())
-            && !FormField.TYPE_TEXT_PRIVATE.equals(field.getType())
-            && !FormField.TYPE_TEXT_SINGLE.equals(field.getType())
-            && !FormField.TYPE_JID_SINGLE.equals(field.getType())
-            && !FormField.TYPE_HIDDEN.equals(field.getType())) {
+        switch (field.getType()) {
+        case text_multi:
+        case text_private:
+        case text_single:
+        case jid_single:
+        case hidden:
+            break;
+        default:
             throw new IllegalArgumentException("This field is not of type String.");
         }
         setAnswer(field, value);
@@ -151,11 +140,7 @@ public class Form {
         if (field == null) {
             throw new IllegalArgumentException("Field not found for the specified variable name.");
         }
-        if (!FormField.TYPE_TEXT_MULTI.equals(field.getType())
-            && !FormField.TYPE_TEXT_PRIVATE.equals(field.getType())
-            && !FormField.TYPE_TEXT_SINGLE.equals(field.getType())) {
-            throw new IllegalArgumentException("This field is not of type int.");
-        }
+        validateThatFieldIsText(field);
         setAnswer(field, value);
     }
 
@@ -175,11 +160,7 @@ public class Form {
         if (field == null) {
             throw new IllegalArgumentException("Field not found for the specified variable name.");
         }
-        if (!FormField.TYPE_TEXT_MULTI.equals(field.getType())
-            && !FormField.TYPE_TEXT_PRIVATE.equals(field.getType())
-            && !FormField.TYPE_TEXT_SINGLE.equals(field.getType())) {
-            throw new IllegalArgumentException("This field is not of type long.");
-        }
+        validateThatFieldIsText(field);
         setAnswer(field, value);
     }
 
@@ -199,11 +180,7 @@ public class Form {
         if (field == null) {
             throw new IllegalArgumentException("Field not found for the specified variable name.");
         }
-        if (!FormField.TYPE_TEXT_MULTI.equals(field.getType())
-            && !FormField.TYPE_TEXT_PRIVATE.equals(field.getType())
-            && !FormField.TYPE_TEXT_SINGLE.equals(field.getType())) {
-            throw new IllegalArgumentException("This field is not of type float.");
-        }
+        validateThatFieldIsText(field);
         setAnswer(field, value);
     }
 
@@ -223,12 +200,19 @@ public class Form {
         if (field == null) {
             throw new IllegalArgumentException("Field not found for the specified variable name.");
         }
-        if (!FormField.TYPE_TEXT_MULTI.equals(field.getType())
-            && !FormField.TYPE_TEXT_PRIVATE.equals(field.getType())
-            && !FormField.TYPE_TEXT_SINGLE.equals(field.getType())) {
-            throw new IllegalArgumentException("This field is not of type double.");
-        }
+        validateThatFieldIsText(field);
         setAnswer(field, value);
+    }
+
+    private static void validateThatFieldIsText(FormField field) {
+        switch(field.getType()) {
+        case text_multi:
+        case text_private:
+        case text_single:
+            break;
+        default:
+            throw new IllegalArgumentException("This field is not of type text (multi, private or single).");
+        }
     }
 
     /**
@@ -247,7 +231,7 @@ public class Form {
         if (field == null) {
             throw new IllegalArgumentException("Field not found for the specified variable name.");
         }
-        if (!FormField.TYPE_BOOLEAN.equals(field.getType())) {
+        if (field.getType() != FormField.Type.bool) {
             throw new IllegalArgumentException("This field is not of type boolean.");
         }
         setAnswer(field, (value ? "1" : "0"));
@@ -300,11 +284,14 @@ public class Form {
         FormField field = getField(variable);
         if (field != null) {
             // Check that the field can accept a collection of values
-            if (!FormField.TYPE_JID_MULTI.equals(field.getType())
-                && !FormField.TYPE_LIST_MULTI.equals(field.getType())
-                && !FormField.TYPE_LIST_SINGLE.equals(field.getType())
-                && !FormField.TYPE_TEXT_MULTI.equals(field.getType())
-                && !FormField.TYPE_HIDDEN.equals(field.getType())) {
+            switch (field.getType()) {
+            case jid_multi:
+            case list_multi:
+            case list_single:
+            case text_multi:
+            case hidden:
+                break;
+            default:
                 throw new IllegalArgumentException("This field only accept list of values.");
             }
             // Clear the old values 
@@ -407,20 +394,11 @@ public class Form {
 
     /**
      * Returns the meaning of the data within the context. The data could be part of a form
-     * to fill out, a form submission or data results.<p>
-     * 
-     * Possible form types are:
-     * <ul>
-     *  <li>form -> Indicates a form to fill out.</li>
-     *  <li>submit -> The form is filled out, and this is the data that is being returned from 
-     * the form.</li>
-     *  <li>cancel -> The form was cancelled. Tell the asker that piece of information.</li>
-     *  <li>result -> Data results being returned from a search, or some other query.</li>
-     * </ul>
+     * to fill out, a form submission or data results.
      * 
      * @return the form's type.
      */
-    public String getType() {
+    public DataForm.Type getType() {
         return dataForm.getType(); 
     }
     
@@ -480,7 +458,7 @@ public class Form {
      * @return if the form is a form to fill out.
      */
     private boolean isFormType() {
-        return TYPE_FORM.equals(dataForm.getType());
+        return DataForm.Type.form == dataForm.getType();
     }
     
     /**
@@ -489,7 +467,7 @@ public class Form {
      * @return if the form is a form to submit.
      */
     private boolean isSubmitType() {
-        return TYPE_SUBMIT.equals(dataForm.getType());
+        return DataForm.Type.submit == dataForm.getType();
     }
 
     /**
@@ -511,7 +489,7 @@ public class Form {
             throw new IllegalStateException("Only forms of type \"form\" could be answered");
         }
         // Create a new Form
-        Form form = new Form(TYPE_SUBMIT);
+        Form form = new Form(DataForm.Type.submit);
         for (FormField field : getFields()) {
             // Add to the new form any type of field that includes a variable.
             // Note: The fields of type FIXED are the only ones that don't specify a variable
@@ -520,7 +498,7 @@ public class Form {
                 newField.setType(field.getType());
                 form.addField(newField);
                 // Set the answer ONLY to the hidden fields 
-                if (FormField.TYPE_HIDDEN.equals(field.getType())) {
+                if (field.getType() == FormField.Type.hidden) {
                     // Since a hidden field could have many values we need to collect them 
                     // in a list
                     List<String> values = new ArrayList<String>();

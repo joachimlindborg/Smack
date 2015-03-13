@@ -19,35 +19,35 @@ package org.jivesoftware.smack.util;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.jivesoftware.smack.SmackException;
-import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.compress.packet.Compress;
-import org.jivesoftware.smack.packet.DefaultPacketExtension;
+import org.jivesoftware.smack.packet.DefaultExtensionElement;
 import org.jivesoftware.smack.packet.EmptyResultIQ;
 import org.jivesoftware.smack.packet.ErrorIQ;
 import org.jivesoftware.smack.packet.IQ;
 import org.jivesoftware.smack.packet.Message;
-import org.jivesoftware.smack.packet.Packet;
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.Stanza;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smack.packet.Presence;
+import org.jivesoftware.smack.packet.Session;
 import org.jivesoftware.smack.packet.StartTls;
 import org.jivesoftware.smack.packet.StreamError;
+import org.jivesoftware.smack.packet.UnparsedIQ;
 import org.jivesoftware.smack.packet.XMPPError;
 import org.jivesoftware.smack.provider.IQProvider;
-import org.jivesoftware.smack.provider.PacketExtensionProvider;
+import org.jivesoftware.smack.provider.ExtensionElementProvider;
 import org.jivesoftware.smack.provider.ProviderManager;
 import org.jivesoftware.smack.sasl.packet.SaslStreamElements.SASLFailure;
+import org.jxmpp.jid.Jid;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlPullParserFactory;
@@ -129,12 +129,8 @@ public class PacketParserUtils {
         return parser;
     }
 
-    public static Packet parseStanza(String stanza) throws Exception {
+    public static Stanza parseStanza(String stanza) throws Exception {
         return parseStanza(getParserFor(stanza));
-    }
-
-    public static Packet parseStanza(XmlPullParser parser) throws Exception {
-        return parseStanza(parser, null);
     }
 
     /**
@@ -143,18 +139,17 @@ public class PacketParserUtils {
      * connection is optional and is used to return feature-not-implemented errors for unknown IQ stanzas.
      *
      * @param parser
-     * @param connection
      * @return a packet which is either a Message, IQ or Presence.
-     * @throws Exception
+     * @throws Exception 
      */
-    public static Packet parseStanza(XmlPullParser parser, XMPPConnection connection) throws Exception {
-        assert(parser.getEventType() == XmlPullParser.START_TAG);
+    public static Stanza parseStanza(XmlPullParser parser) throws Exception {
+        ParserUtils.assertAtStartTag(parser);
         final String name = parser.getName();
         switch (name) {
         case Message.ELEMENT:
             return parseMessage(parser);
-        case IQ.ELEMENT:
-            return parse(parser, connection);
+        case IQ.IQ_ELEMENT:
+            return parseIQ(parser);
         case Presence.ELEMENT:
             return parsePresence(parser);
         default:
@@ -214,20 +209,18 @@ public class PacketParserUtils {
      *
      * @param parser the XML parser, positioned at the start of a message packet.
      * @return a Message packet.
-     * @throws IOException 
-     * @throws XmlPullParserException 
-     * @throws SmackException 
+     * @throws Exception 
      */
     public static Message parseMessage(XmlPullParser parser)
-                    throws XmlPullParserException, IOException, SmackException {
+                    throws Exception {
         ParserUtils.assertAtStartTag(parser);
         assert(parser.getName().equals(Message.ELEMENT));
 
         final int initialDepth = parser.getDepth();
         Message message = new Message();
-        message.setPacketID(parser.getAttributeValue("", "id"));
-        message.setTo(parser.getAttributeValue("", "to"));
-        message.setFrom(parser.getAttributeValue("", "from"));
+        message.setStanzaId(parser.getAttributeValue("", "id"));
+        message.setTo(ParserUtils.getJidAttribute(parser, "to"));
+        message.setFrom(ParserUtils.getJidAttribute(parser, "from"));
         String typeString = parser.getAttributeValue("", "type");
         if (typeString != null) {
             message.setType(Message.Type.fromString(typeString));
@@ -241,7 +234,7 @@ public class PacketParserUtils {
             defaultLanguage = language;
         } 
         else {
-            defaultLanguage = Packet.getDefaultLanguage();
+            defaultLanguage = Stanza.getDefaultLanguage();
         }
 
         // Parse sub-elements. We include extra logic to make sure the values
@@ -288,7 +281,7 @@ public class PacketParserUtils {
                     message.setError(parseError(parser));
                     break;
                  default:
-                    PacketParserUtils.addPacketExtension(message, parser, elementName, namespace);
+                    PacketParserUtils.addExtensionElement(message, parser, elementName, namespace);
                     break;
                 }
                 break;
@@ -445,8 +438,9 @@ public class PacketParserUtils {
         // it. This 'flag' ensures that when a namespace is set for an element, it won't be set again
         // in a nested element. It's an ugly workaround that has the potential to break things.
         String namespaceElement = null;
-        while (true) {
-            if (event == XmlPullParser.START_TAG) {
+        outerloop: while (true) {
+            switch (event) {
+            case XmlPullParser.START_TAG:
                 xml.halfOpenElement(parser.getName());
                 if (namespaceElement == null || fullNamespaces) {
                     String namespace = parser.getNamespace();
@@ -465,8 +459,8 @@ public class PacketParserUtils {
                 else {
                     xml.rightAngleBracket();
                 }
-            }
-            else if (event == XmlPullParser.END_TAG) {
+                break;
+            case XmlPullParser.END_TAG:
                 if (isEmptyElement) {
                     // Do nothing as the element was already closed, just reset the flag
                     isEmptyElement = false;
@@ -480,11 +474,12 @@ public class PacketParserUtils {
                 }
                 if (parser.getDepth() <= depth) {
                     // Abort parsing, we are done
-                    break;
+                    break outerloop;
                 }
-            }
-            else if (event == XmlPullParser.TEXT) {
+                break;
+            case XmlPullParser.TEXT:
                 xml.append(parser.getText());
+                break;
             }
             event = parser.next();
         }
@@ -514,12 +509,10 @@ public class PacketParserUtils {
      *
      * @param parser the XML parser, positioned at the start of a presence packet.
      * @return a Presence packet.
-     * @throws IOException 
-     * @throws XmlPullParserException 
-     * @throws SmackException 
+     * @throws Exception 
      */
     public static Presence parsePresence(XmlPullParser parser)
-                    throws XmlPullParserException, IOException, SmackException {
+                    throws Exception {
         ParserUtils.assertAtStartTag(parser);
         final int initialDepth = parser.getDepth();
 
@@ -529,9 +522,9 @@ public class PacketParserUtils {
             type = Presence.Type.fromString(typeString);
         }
         Presence presence = new Presence(type);
-        presence.setTo(parser.getAttributeValue("", "to"));
-        presence.setFrom(parser.getAttributeValue("", "from"));
-        presence.setPacketID(parser.getAttributeValue("", "id"));
+        presence.setTo(ParserUtils.getJidAttribute(parser, "to"));
+        presence.setFrom(ParserUtils.getJidAttribute(parser, "from"));
+        presence.setStanzaId(parser.getAttributeValue("", "id"));
 
         String language = getLanguageAttribute(parser);
         if (language != null && !"".equals(language.trim())) {
@@ -564,7 +557,7 @@ public class PacketParserUtils {
                         LOGGER.warning("Empty or null mode text in presence show element form "
                                         + presence.getFrom()
                                         + " with id '"
-                                        + presence.getPacketID()
+                                        + presence.getStanzaId()
                                         + "' which is invalid according to RFC6121 4.7.2.1");
                     }
                     break;
@@ -576,7 +569,7 @@ public class PacketParserUtils {
                     // Be extra robust: Skip PacketExtensions that cause Exceptions, instead of
                     // failing completely here. See SMACK-390 for more information.
                     try {
-                        PacketParserUtils.addPacketExtension(presence, parser, elementName, namespace);
+                        PacketParserUtils.addExtensionElement(presence, parser, elementName, namespace);
                     } catch (Exception e) {
                         LOGGER.log(Level.WARNING, "Failed to parse extension packet in Presence packet.", e);
                     }
@@ -596,19 +589,20 @@ public class PacketParserUtils {
      * Parses an IQ packet.
      *
      * @param parser the XML parser, positioned at the start of an IQ packet.
-     * @param connection the optional XMPPConnection used to send feature-not-implemented replies.
      * @return an IQ object.
-     * @throws Exception if an exception occurs while parsing the packet.
+     * @throws XmlPullParserException 
+     * @throws IOException 
+     * @throws SmackException 
      */
-    public static IQ parse(XmlPullParser parser, XMPPConnection connection) throws Exception {
+    public static IQ parseIQ(XmlPullParser parser) throws Exception {
         ParserUtils.assertAtStartTag(parser);
         final int initialDepth = parser.getDepth();
         IQ iqPacket = null;
         XMPPError error = null;
 
         final String id = parser.getAttributeValue("", "id");
-        final String to = parser.getAttributeValue("", "to");
-        final String from = parser.getAttributeValue("", "from");
+        final Jid to = ParserUtils.getJidAttribute(parser, "to");
+        final Jid from = ParserUtils.getJidAttribute(parser, "from");
         final IQ.Type type = IQ.Type.fromString(parser.getAttributeValue("", "type"));
 
         outerloop: while (true) {
@@ -628,23 +622,13 @@ public class PacketParserUtils {
                     IQProvider<IQ> provider = ProviderManager.getIQProvider(elementName, namespace);
                     if (provider != null) {
                             iqPacket = provider.parse(parser);
-                    } else {
-                        Class<?> introspectionProvider = ProviderManager.getIQIntrospectionProvider(
-                                        elementName, namespace);
-                        if (introspectionProvider != null) {
-                        iqPacket = (IQ) PacketParserUtils.parseWithIntrospection(
-                                        elementName, introspectionProvider,
-                                        parser);
-                        }
-                        // Only handle unknown IQs of type result. Types of 'get' and 'set' which are not understood
-                        // have to be answered with an IQ error response. See the code a few lines below
-                        // Note that if we reach this code, it is guranteed that the result IQ contained a child element
-                        // (RFC 6120 § 8.2.3 6) because otherwhise we would have reached the END_TAG first.
-                        else if (IQ.Type.result == type){
-                            // No Provider found for the IQ stanza, parse it to an UnparsedIQ instance
-                            // so that the content of the IQ can be examined later on
-                            iqPacket = new UnparsedResultIQ(elementName, namespace, parseElement(parser));
-                        }
+                    }
+                    // Note that if we reach this code, it is guranteed that the result IQ contained a child element
+                    // (RFC 6120 § 8.2.3 6) because otherwhise we would have reached the END_TAG first.
+                    else {
+                        // No Provider found for the IQ stanza, parse it to an UnparsedIQ instance
+                        // so that the content of the IQ can be examined later on
+                        iqPacket = new UnparsedIQ(elementName, namespace, parseElement(parser));
                     }
                     break;
                 }
@@ -659,20 +643,6 @@ public class PacketParserUtils {
         // Decide what to do when an IQ packet was not understood
         if (iqPacket == null) {
             switch (type) {
-            case get:
-            case set:
-                if (connection == null) {
-                    return null;
-                }
-                // If the IQ stanza is of type "get" or "set" containing a child element qualified
-                // by a namespace with no registered Smack provider, then answer an IQ of type
-                // "error" with code 501 ("feature-not-implemented")
-                iqPacket = new ErrorIQ(new XMPPError(XMPPError.Condition.feature_not_implemented));
-                iqPacket.setPacketID(id);
-                iqPacket.setTo(from);
-                iqPacket.setFrom(to);
-                connection.sendPacket(iqPacket);
-                return null;
             case error:
                 // If an IQ packet wasn't created above, create an empty error IQ packet.
                 iqPacket = new ErrorIQ(error);
@@ -680,11 +650,13 @@ public class PacketParserUtils {
             case result:
                 iqPacket = new EmptyResultIQ();
                 break;
+            default:
+                break;
             }
         }
 
         // Set basic values on the iq packet.
-        iqPacket.setPacketID(id);
+        iqPacket.setStanzaId(id);
         iqPacket.setTo(to);
         iqPacket.setFrom(from);
         iqPacket.setType(type);
@@ -762,6 +734,18 @@ public class PacketParserUtils {
         return new Compress.Feature(methods);
     }
 
+    public static Map<String, String> parseDescriptiveTexts(XmlPullParser parser, Map<String, String> descriptiveTexts)
+                    throws XmlPullParserException, IOException {
+        if (descriptiveTexts == null) {
+            descriptiveTexts = new HashMap<String, String>();
+        }
+        String xmllang = getLanguageAttribute(parser);
+        String text = parser.nextText();
+        String previousValue = descriptiveTexts.put(xmllang, text);
+        assert (previousValue == null);
+        return descriptiveTexts;
+    }
+
     /**
      * Parses SASL authentication error packets.
      * 
@@ -773,17 +757,14 @@ public class PacketParserUtils {
     public static SASLFailure parseSASLFailure(XmlPullParser parser) throws XmlPullParserException, IOException {
         final int initialDepth = parser.getDepth();
         String condition = null;
-        Map<String, String> descriptiveTexts = new HashMap<String, String>();
+        Map<String, String> descriptiveTexts = null;
         outerloop: while (true) {
             int eventType = parser.next();
             switch (eventType) {
             case XmlPullParser.START_TAG:
                 String name = parser.getName();
                 if (name.equals("text")) {
-                    String xmllang = getLanguageAttribute(parser);
-                    String text = parser.nextText();
-                    String previousValue = descriptiveTexts.put(xmllang, text);
-                    assert(previousValue == null);
+                    descriptiveTexts = parseDescriptiveTexts(parser, descriptiveTexts);
                 }
                 else {
                     assert(condition == null);
@@ -805,129 +786,132 @@ public class PacketParserUtils {
      *
      * @param parser the XML parser.
      * @return an stream error packet.
-     * @throws XmlPullParserException if an exception occurs while parsing the packet.
+     * @throws Exception if an exception occurs while parsing the packet.
      */
-    public static StreamError parseStreamError(XmlPullParser parser) throws IOException,
-            XmlPullParserException {
-    final int depth = parser.getDepth();
-    boolean done = false;
-    String code = null;
-    String text = null;
-    while (!done) {
-        int eventType = parser.next();
-
-        if (eventType == XmlPullParser.START_TAG) {
-            String namespace = parser.getNamespace();
-            if (StreamError.NAMESPACE.equals(namespace)) {
+    public static StreamError parseStreamError(XmlPullParser parser) throws Exception {
+        final int initialDepth = parser.getDepth();
+        List<ExtensionElement> extensions = new ArrayList<ExtensionElement>();
+        Map<String, String> descriptiveTexts = null;
+        StreamError.Condition condition = null;
+        String conditionText = null;
+        outerloop: while (true) {
+            int eventType = parser.next();
+            switch (eventType) {
+            case XmlPullParser.START_TAG:
                 String name = parser.getName();
-                if (name.equals(Packet.TEXT) && !parser.isEmptyElementTag()) {
-                    parser.next();
-                    text = parser.getText();
+                String namespace = parser.getNamespace();
+                switch (namespace) {
+                case StreamError.NAMESPACE:
+                    switch (name) {
+                    case "text":
+                        descriptiveTexts = parseDescriptiveTexts(parser, descriptiveTexts);
+                        break;
+                    default:
+                        // If it's not a text element, that is qualified by the StreamError.NAMESPACE,
+                        // then it has to be the stream error code
+                        condition = StreamError.Condition.fromString(name);
+                        if (!parser.isEmptyElementTag()) {
+                            conditionText = parser.nextText();
+                        }
+                        break;
+                    }
+                    break;
+                default:
+                    PacketParserUtils.addExtensionElement(extensions, parser, name, namespace);
+                    break;
                 }
-                else {
-                    // If it's not a text element, that is qualified by the StreamError.NAMESPACE,
-                    // then it has to be the stream error code
-                    code = name;
+                break;
+            case XmlPullParser.END_TAG:
+                if (parser.getDepth() == initialDepth) {
+                    break outerloop;
                 }
+                break;
             }
         }
-        else if (eventType == XmlPullParser.END_TAG && depth == parser.getDepth()) {
-            done = true;
-        }
+        return new StreamError(condition, conditionText, descriptiveTexts, extensions);
     }
-    return new StreamError(code, text);
-}
 
     /**
      * Parses error sub-packets.
      *
      * @param parser the XML parser.
      * @return an error sub-packet.
-     * @throws IOException 
-     * @throws XmlPullParserException 
-     * @throws SmackException 
+     * @throws Exception 
      */
     public static XMPPError parseError(XmlPullParser parser)
-                    throws XmlPullParserException, IOException, SmackException {
-        String type = null;
-        String message = null;
-        String condition = null;
-        List<PacketExtension> extensions = new ArrayList<PacketExtension>();
+                    throws Exception {
+        final int initialDepth = parser.getDepth();
+        Map<String, String> descriptiveTexts = null;
+        XMPPError.Condition condition = null;
+        String conditionText = null;
+        List<ExtensionElement> extensions = new ArrayList<ExtensionElement>();
 
         // Parse the error header
-        type = parser.getAttributeValue("", "type");
-        // Parse the text and condition tags
-        outerloop:
-        while (true) {
+        XMPPError.Type errorType = XMPPError.Type.fromString(parser.getAttributeValue("", "type"));
+        String errorGenerator = parser.getAttributeValue("", "by");
+
+        outerloop: while (true) {
             int eventType = parser.next();
-            if (eventType == XmlPullParser.START_TAG) {
-                if (parser.getName().equals(Packet.TEXT)) {
-                    message = parser.nextText();
+            switch (eventType) {
+            case XmlPullParser.START_TAG:
+                String name = parser.getName();
+                String namespace = parser.getNamespace();
+                switch (namespace) {
+                case XMPPError.NAMESPACE:
+                    switch (name) {
+                    case Stanza.TEXT:
+                        descriptiveTexts = parseDescriptiveTexts(parser, descriptiveTexts);
+                        break;
+                    default:
+                        condition = XMPPError.Condition.fromString(name);
+                        if (!parser.isEmptyElementTag()) {
+                            conditionText = parser.nextText();
+                        }
+                        break;
+                    }
+                    break;
+                default:
+                    PacketParserUtils.addExtensionElement(extensions, parser, name, namespace);
                 }
-                else {
-                	// Condition tag, it can be xmpp error or an application defined error.
-                    String elementName = parser.getName();
-                    String namespace = parser.getNamespace();
-                    if (namespace.equals(XMPPError.NAMESPACE)) {
-                    	condition = elementName;
-                    }
-                     else {
-                        PacketParserUtils.addPacketExtension(extensions, parser, elementName, namespace);
-                    }
+                break;
+            case XmlPullParser.END_TAG:
+                if (parser.getDepth() == initialDepth) {
+                    break outerloop;
                 }
             }
-                else if (eventType == XmlPullParser.END_TAG) {
-                    if (parser.getName().equals("error")) {
-                        break outerloop;
-                    }
-                }
         }
-        // Parse the error type.
-        XMPPError.Type errorType = XMPPError.Type.CANCEL;
-        try {
-            if (type != null) {
-                errorType = XMPPError.Type.valueOf(type.toUpperCase(Locale.US));
-            }
-        }
-        catch (IllegalArgumentException iae) {
-            LOGGER.log(Level.SEVERE, "Could not find error type for " + type.toUpperCase(Locale.US), iae);
-        }
-        return new XMPPError(errorType, condition, message, extensions);
+        return new XMPPError(condition, conditionText, errorGenerator, errorType, descriptiveTexts, extensions);
     }
 
     /**
-     * Parses a packet extension sub-packet.
+     * @deprecated use {@link #parseExtensionElement(String, String, XmlPullParser)} instead.
+     */
+    @Deprecated
+    public static ExtensionElement parsePacketExtension(String elementName, String namespace,
+                    XmlPullParser parser) throws Exception {
+        return parseExtensionElement(elementName, namespace, parser);
+    }
+ 
+    /**
+     * Parses an extension element.
      *
-     * @param elementName the XML element name of the packet extension.
+     * @param elementName the XML element name of the extension element.
      * @param namespace the XML namespace of the packet extension.
      * @param parser the XML parser, positioned at the starting element of the extension.
-     * @return a PacketExtension.
+     * @return an extension element.
      */
-    public static PacketExtension parsePacketExtension(String elementName, String namespace,
-                    XmlPullParser parser) throws XmlPullParserException,
-                    IOException, SmackException {
+    public static ExtensionElement parseExtensionElement(String elementName, String namespace,
+                    XmlPullParser parser) throws Exception {
         ParserUtils.assertAtStartTag(parser);
         // See if a provider is registered to handle the extension.
-        PacketExtensionProvider<PacketExtension> provider = ProviderManager.getExtensionProvider(elementName, namespace);
+        ExtensionElementProvider<ExtensionElement> provider = ProviderManager.getExtensionProvider(elementName, namespace);
         if (provider != null) {
                 return provider.parse(parser);
-        }
-        Class<?> introspectionProvider = ProviderManager.getExtensionIntrospectionProvider(elementName, namespace);
-        if (introspectionProvider != null) {
-            try {
-                return (PacketExtension)parseWithIntrospection(elementName, introspectionProvider, parser);
-            } catch (NoSuchMethodException | SecurityException
-                            | InstantiationException | IllegalAccessException
-                            | IllegalArgumentException
-                            | InvocationTargetException
-                            | ClassNotFoundException e) {
-                throw new SmackException(e);
-            }
         }
 
         final int initialDepth = parser.getDepth();
         // No providers registered, so use a default extension.
-        DefaultPacketExtension extension = new DefaultPacketExtension(elementName, namespace);
+        DefaultExtensionElement extension = new DefaultExtensionElement(elementName, namespace);
         outerloop: while (true) {
             int eventType = parser.next();
             switch (eventType) {
@@ -982,6 +966,32 @@ public class PacketParserUtils {
         return new StartTls(required);
     }
 
+    public static Session.Feature parseSessionFeature(XmlPullParser parser) throws XmlPullParserException, IOException {
+        ParserUtils.assertAtStartTag(parser);
+        final int initialDepth = parser.getDepth();
+        boolean optional = false;
+        if (!parser.isEmptyElementTag()) {
+        outerloop: while(true) {
+            int event = parser.next();
+            switch (event) {
+            case XmlPullParser.START_TAG:
+                String name = parser.getName();
+                switch (name) {
+                    case Session.Feature.OPTIONAL_ELEMENT:
+                        optional = true;
+                        break;
+                }
+                break;
+            case XmlPullParser.END_TAG:
+                if (parser.getDepth() == initialDepth) {
+                    break outerloop;
+                }
+            }
+        }
+        }
+        return new Session.Feature(optional);
+
+    }
     private static String getLanguageAttribute(XmlPullParser parser) {
     	for (int i = 0; i < parser.getAttributeCount(); i++) {
             String attributeName = parser.getAttributeName(i);
@@ -994,116 +1004,51 @@ public class PacketParserUtils {
     	return null;
     }
 
-    public static Object parseWithIntrospection(String elementName, Class<?> objectClass,
-                    XmlPullParser parser) throws NoSuchMethodException, SecurityException,
-                    InstantiationException, IllegalAccessException, XmlPullParserException,
-                    IOException, IllegalArgumentException, InvocationTargetException,
-                    ClassNotFoundException {
-        boolean done = false;
-        Object object = objectClass.newInstance();
-        while (!done) {
-            int eventType = parser.next();
-            if (eventType == XmlPullParser.START_TAG) {
-                String name = parser.getName();
-                String stringValue = parser.nextText();
-                Class<?> propertyType = object.getClass().getMethod(
-                                "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1)).getReturnType();
-                // Get the value of the property by converting it from a
-                // String to the correct object type.
-                Object value = decode(propertyType, stringValue);
-                // Set the value of the bean.
-                object.getClass().getMethod(
-                                "set" + Character.toUpperCase(name.charAt(0)) + name.substring(1),
-                                propertyType).invoke(object, value);
-            }
-            else if (eventType == XmlPullParser.END_TAG) {
-                if (parser.getName().equals(elementName)) {
-                    done = true;
-                }
-            }
-        }
-        return object;
+    @Deprecated
+    public static void addPacketExtension(Stanza packet, XmlPullParser parser) throws Exception {
+        addExtensionElement(packet, parser);
     }
 
-    public static void addPacketExtension(Packet packet, XmlPullParser parser) throws XmlPullParserException,
-                    IOException, SmackException {
+    @Deprecated
+    public static void addPacketExtension(Stanza packet, XmlPullParser parser, String elementName, String namespace)
+                    throws Exception {
+        addExtensionElement(packet, parser, elementName, namespace);
+    }
+
+    @Deprecated
+    public static void addPacketExtension(Collection<ExtensionElement> collection, XmlPullParser parser)
+                    throws Exception {
+        addExtensionElement(collection, parser, parser.getName(), parser.getNamespace());
+    }
+
+    @Deprecated
+    public static void addPacketExtension(Collection<ExtensionElement> collection, XmlPullParser parser,
+                    String elementName, String namespace) throws Exception {
+        addExtensionElement(collection, parser, elementName, namespace);
+    }
+
+
+    public static void addExtensionElement(Stanza packet, XmlPullParser parser)
+                    throws Exception {
         ParserUtils.assertAtStartTag(parser);
-        addPacketExtension(packet, parser, parser.getName(), parser.getNamespace());
+        addExtensionElement(packet, parser, parser.getName(), parser.getNamespace());
     }
 
-    public static void addPacketExtension(Packet packet, XmlPullParser parser, String elementName, String namespace)
-                    throws XmlPullParserException, IOException, SmackException {
-        PacketExtension packetExtension = parsePacketExtension(elementName, namespace, parser);
+    public static void addExtensionElement(Stanza packet, XmlPullParser parser, String elementName,
+                    String namespace) throws Exception{
+        ExtensionElement packetExtension = parseExtensionElement(elementName, namespace, parser);
         packet.addExtension(packetExtension);
     }
 
-    public static void addPacketExtension(Collection<PacketExtension> collection, XmlPullParser parser)
-                    throws XmlPullParserException, IOException, SmackException {
-        addPacketExtension(collection, parser, parser.getName(), parser.getNamespace());
+    public static void addExtensionElement(Collection<ExtensionElement> collection,
+                    XmlPullParser parser) throws Exception {
+        addExtensionElement(collection, parser, parser.getName(), parser.getNamespace());
     }
 
-    public static void addPacketExtension(Collection<PacketExtension> collection, XmlPullParser parser,
-                    String elementName, String namespace) throws XmlPullParserException, IOException, SmackException {
-        PacketExtension packetExtension = parsePacketExtension(elementName, namespace, parser);
+    public static void addExtensionElement(Collection<ExtensionElement> collection,
+                    XmlPullParser parser, String elementName, String namespace)
+                    throws Exception {
+        ExtensionElement packetExtension = parseExtensionElement(elementName, namespace, parser);
         collection.add(packetExtension);
-    }
-
-    /**
-     * Decodes a String into an object of the specified type. If the object
-     * type is not supported, null will be returned.
-     *
-     * @param type the type of the property.
-     * @param value the encode String value to decode.
-     * @return the String value decoded into the specified type.
-     * @throws ClassNotFoundException 
-     */
-    private static Object decode(Class<?> type, String value) throws ClassNotFoundException {
-        if (type.getName().equals("java.lang.String")) {
-            return value;
-        }
-        if (type.getName().equals("boolean")) {
-            return Boolean.valueOf(value);
-        }
-        if (type.getName().equals("int")) {
-            return Integer.valueOf(value);
-        }
-        if (type.getName().equals("long")) {
-            return Long.valueOf(value);
-        }
-        if (type.getName().equals("float")) {
-            return Float.valueOf(value);
-        }
-        if (type.getName().equals("double")) {
-            return Double.valueOf(value);
-        }
-        if (type.getName().equals("java.lang.Class")) {
-            return Class.forName(value);
-        }
-        return null;
-    }
-
-    /**
-     * This class represents and unparsed IQ of the type 'result'. Usually it's created when no IQProvider
-     * was found for the IQ element.
-     * 
-     * The child elements can be examined with the getChildElementXML() method.
-     *
-     */
-    public static class UnparsedResultIQ extends IQ {
-        private UnparsedResultIQ(String element, String namespace, CharSequence content) {
-            super(element, namespace);
-            this.content = content;
-        }
-
-        private final CharSequence content;
-
-        public CharSequence getContent() {
-            return content;
-        }
-
-        @Override
-        protected IQChildElementXmlStringBuilder getIQChildElementBuilder(IQChildElementXmlStringBuilder xml) {
-            throw new UnsupportedOperationException();
-        }
     }
 }

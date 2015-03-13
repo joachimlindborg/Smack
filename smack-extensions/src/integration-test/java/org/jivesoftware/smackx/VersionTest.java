@@ -45,9 +45,9 @@ public class VersionTest extends SmackTestCase {
         version.setTo(getServiceName());
 
         // Create a packet collector to listen for a response.
-        PacketCollector collector = getConnection(0).createPacketCollector(new PacketIDFilter(version.getPacketID()));
+        PacketCollector collector = getConnection(0).createPacketCollector(new PacketIDFilter(version.getStanzaId()));
 
-        getConnection(0).sendPacket(version);
+        getConnection(0).sendStanza(version);
 
         // Wait up to 5 seconds for a result.
         IQ result = (IQ)collector.nextResult(5000);

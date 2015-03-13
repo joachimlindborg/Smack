@@ -17,6 +17,8 @@
 
 package org.jivesoftware.smack.packet;
 
+import org.jivesoftware.smack.util.XmlStringBuilder;
+
 /**
  * IQ packet that will be sent to the server to establish a session.<p>
  *
@@ -35,18 +37,23 @@ public class Session extends SimpleIQ {
     public static final String ELEMENT = "session";
     public static final String NAMESPACE = "urn:ietf:params:xml:ns:xmpp-session";
 
-    private static final String SESSION = '<' + ELEMENT + " xmlns='" + NAMESPACE + "'/>";
-
     public Session() {
         super(ELEMENT, NAMESPACE);
         setType(IQ.Type.set);
     }
 
-    public static class Feature implements PacketExtension {
+    public static class Feature implements ExtensionElement {
 
-        public static final Session.Feature INSTANCE = new Feature();
+        public static final String OPTIONAL_ELEMENT = "optional";
 
-        private Feature() {
+        private final boolean optional;
+
+        public Feature(boolean optional) {
+            this.optional = optional;
+        }
+
+        public boolean isOptional() {
+            return optional;
         }
 
         @Override
@@ -60,8 +67,16 @@ public class Session extends SimpleIQ {
         }
 
         @Override
-        public String toXML() {
-            return SESSION;
+        public XmlStringBuilder toXML() {
+            XmlStringBuilder xml = new XmlStringBuilder(this);
+            if (optional) {
+                xml.rightAngleBracket();
+                xml.emptyElement(OPTIONAL_ELEMENT);
+                xml.closeElement(this);
+            } else {
+                xml.closeEmptyElement();
+            }
+            return xml;
         }
     }
 }

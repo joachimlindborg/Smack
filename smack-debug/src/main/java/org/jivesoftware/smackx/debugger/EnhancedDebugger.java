@@ -19,19 +19,21 @@ package org.jivesoftware.smackx.debugger;
 
 import org.jivesoftware.smack.AbstractConnectionListener;
 import org.jivesoftware.smack.ConnectionListener;
-import org.jivesoftware.smack.PacketListener;
+import org.jivesoftware.smack.StanzaListener;
 import org.jivesoftware.smack.SmackException.NotConnectedException;
 import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.debugger.SmackDebugger;
 import org.jivesoftware.smack.packet.IQ;
 import org.jivesoftware.smack.packet.Message;
-import org.jivesoftware.smack.packet.Packet;
+import org.jivesoftware.smack.packet.Stanza;
 import org.jivesoftware.smack.packet.Presence;
 import org.jivesoftware.smack.util.ObservableReader;
 import org.jivesoftware.smack.util.ObservableWriter;
 import org.jivesoftware.smack.util.ReaderListener;
 import org.jivesoftware.smack.util.StringUtils;
 import org.jivesoftware.smack.util.WriterListener;
+import org.jxmpp.jid.FullJid;
+import org.jxmpp.jid.Jid;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -148,8 +150,8 @@ public class EnhancedDebugger implements SmackDebugger {
 
     private XMPPConnection connection = null;
 
-    private PacketListener packetReaderListener = null;
-    private PacketListener packetWriterListener = null;
+    private StanzaListener packetReaderListener = null;
+    private StanzaListener packetWriterListener = null;
     private ConnectionListener connListener = null;
 
     private Writer writer;
@@ -203,10 +205,10 @@ public class EnhancedDebugger implements SmackDebugger {
         // Create a thread that will listen for all incoming packets and write them to
         // the GUI. This is what we call "interpreted" packet data, since it's the packet
         // data as Smack sees it and not as it's coming in as raw XML.
-        packetReaderListener = new PacketListener() {
+        packetReaderListener = new StanzaListener() {
             SimpleDateFormat dateFormatter = new SimpleDateFormat("hh:mm:ss:SS aaa");
 
-            public void processPacket(final Packet packet) {
+            public void processPacket(final Stanza packet) {
                 SwingUtilities.invokeLater(new Runnable() {
                     public void run() {
                         addReadPacketToTable(dateFormatter, packet);
@@ -218,10 +220,10 @@ public class EnhancedDebugger implements SmackDebugger {
 
         // Create a thread that will listen for all outgoing packets and write them to
         // the GUI.
-        packetWriterListener = new PacketListener() {
+        packetWriterListener = new StanzaListener() {
             SimpleDateFormat dateFormatter = new SimpleDateFormat("hh:mm:ss:SS aaa");
 
-            public void processPacket(final Packet packet) {
+            public void processPacket(final Stanza packet) {
                 SwingUtilities.invokeLater(new Runnable() {
                     public void run() {
                         addSentPacketToTable(dateFormatter, packet);
@@ -578,9 +580,9 @@ public class EnhancedDebugger implements SmackDebugger {
                 if (!"".equals(adhocMessages.getText())) {
                     AdHocPacket packetToSend = new AdHocPacket(adhocMessages.getText());
                     try {
-                        connection.sendPacket(packetToSend);
+                        connection.sendStanza(packetToSend);
                     }
-                    catch (NotConnectedException e1) {
+                    catch (InterruptedException | NotConnectedException e1) {
                         e1.printStackTrace();
                     }
                 }
@@ -735,12 +737,13 @@ public class EnhancedDebugger implements SmackDebugger {
         return writer;
     }
 
-    public void userHasLogged(final String user) {
+    @Override
+    public void userHasLogged(final FullJid user) {
         final EnhancedDebugger debugger = this;
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
-                userField.setText(user);
-                EnhancedDebuggerWindow.userHasLogged(debugger, user);
+                userField.setText(user.toString());
+                EnhancedDebuggerWindow.userHasLogged(debugger, user.toString());
                 // Add the connection listener to the connection so that the debugger can be notified
                 // whenever the connection is closed.
                 connection.addConnectionListener(connListener);
@@ -757,11 +760,11 @@ public class EnhancedDebugger implements SmackDebugger {
         return writer;
     }
 
-    public PacketListener getReaderListener() {
+    public StanzaListener getReaderListener() {
         return packetReaderListener;
     }
 
-    public PacketListener getWriterListener() {
+    public StanzaListener getWriterListener() {
         return packetWriterListener;
     }
 
@@ -791,11 +794,11 @@ public class EnhancedDebugger implements SmackDebugger {
      * @param dateFormatter the SimpleDateFormat to use to format Dates
      * @param packet        the read packet to add to the table
      */
-    private void addReadPacketToTable(final SimpleDateFormat dateFormatter, final Packet packet) {
+    private void addReadPacketToTable(final SimpleDateFormat dateFormatter, final Stanza packet) {
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
                 String messageType;
-                String from = packet.getFrom();
+                Jid from = packet.getFrom();
                 String type = "";
                 Icon packetTypeIcon;
                 receivedPackets++;
@@ -836,7 +839,7 @@ public class EnhancedDebugger implements SmackDebugger {
                                 packetReceivedIcon,
                                 packetTypeIcon,
                                 messageType,
-                                packet.getPacketID(),
+                                packet.getStanzaId(),
                                 type,
                                 "",
                                 from});
@@ -852,11 +855,11 @@ public class EnhancedDebugger implements SmackDebugger {
      * @param dateFormatter the SimpleDateFormat to use to format Dates
      * @param packet        the sent packet to add to the table
      */
-    private void addSentPacketToTable(final SimpleDateFormat dateFormatter, final Packet packet) {
+    private void addSentPacketToTable(final SimpleDateFormat dateFormatter, final Stanza packet) {
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
                 String messageType;
-                String to = packet.getTo();
+                Jid to = packet.getTo();
                 String type = "";
                 Icon packetTypeIcon;
                 sentPackets++;
@@ -897,7 +900,7 @@ public class EnhancedDebugger implements SmackDebugger {
                                 packetSentIcon,
                                 packetTypeIcon,
                                 messageType,
-                                packet.getPacketID(),
+                                packet.getStanzaId(),
                                 type,
                                 to,
                                 ""});
@@ -956,7 +959,7 @@ public class EnhancedDebugger implements SmackDebugger {
      */
     void cancel() {
         connection.removeConnectionListener(connListener);
-        connection.removePacketListener(packetReaderListener);
+        connection.removeAsyncStanzaListener(packetReaderListener);
         connection.removePacketSendingListener(packetWriterListener);
         ((ObservableReader) reader).removeReaderListener(readerListener);
         ((ObservableWriter) writer).removeWriterListener(writerListener);
@@ -970,7 +973,7 @@ public class EnhancedDebugger implements SmackDebugger {
      * The whole text to send must be passed to the constructor. This implies that the client of
      * this class is responsible for sending a valid text to the constructor.
      */
-    private class AdHocPacket extends Packet {
+    private class AdHocPacket extends Stanza {
 
         private String text;
 

@@ -159,7 +159,7 @@ public class JingleManagerTest extends SmackTestCase {
         };
 
         // Start a packet listener for session initiation requests
-        getConnection(0).addPacketListener(new PacketListener() {
+        getConnection(0).addAsyncPacketListener(new PacketListener() {
             public void processPacket(final Packet packet) {
                 System.out.println("Packet detected... ");
                 incCounter();
@@ -175,7 +175,7 @@ public class JingleManagerTest extends SmackTestCase {
         iqSent.setType(IQ.Type.set);
 
         System.out.println("Sending packet and waiting... ");
-        getConnection(1).sendPacket(iqSent);
+        getConnection(1).sendStanza(iqSent);
         try {
             Thread.sleep(10000);
         } catch (InterruptedException e) {
@@ -186,7 +186,7 @@ public class JingleManagerTest extends SmackTestCase {
     }
 
     /**
-     * High level API test. This is a simple test to use with a XMPP client and
+     * High level API test. This is a simple test to use with an XMPP client and
      * check if the client receives the message 1. User_1 will send an
      * invitation to user_2.
      */
@@ -239,7 +239,7 @@ public class JingleManagerTest extends SmackTestCase {
     }
 
     /**
-     * High level API test. This is a simple test to use with a XMPP client and
+     * High level API test. This is a simple test to use with an XMPP client and
      * check if the client receives the message 1. User_1 will send an
      * invitation to user_2.
      */
@@ -685,7 +685,7 @@ public class JingleManagerTest extends SmackTestCase {
         XMPPTCPConnection x0 = getConnection(0);
         XMPPTCPConnection x1 = getConnection(1);
 
-        XMPPTCPConnection.DEBUG_ENABLED = true;
+        XMPPSmackConfiguration.DEBUG = true;
 
         FixedResolver tr0 = new FixedResolver("127.0.0.1", 20080);
         FixedTransportManager ftm0 = new FixedTransportManager(tr0);

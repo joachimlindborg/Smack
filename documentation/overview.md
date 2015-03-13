@@ -1,7 +1,7 @@
 Smack Overview
 ==============
 
-[Back](index.html)
+[Back](index.md)
 
 Smack is a library for communicating with XMPP servers to perform real-time
 communications, including instant messaging and group chat.
@@ -13,8 +13,8 @@ Smack Key Advantages
 
     ```java
     AbstractXMPPConnection connection = new XMPPTCPConnection("mtucker", "password", "jabber.org");
-    connection.connect();
-    connection.login();
+    connection.connect().login();
+
     Chat chat = ChatManager.getInstanceFor(connection)
         .createChat("jsmith@jivesoftware.com", new MessageListener() {
 

@@ -212,7 +212,7 @@ public class JingleMediaTest extends SmackTestCase {
 
         try {
 
-            //TCPConnection.DEBUG_ENABLED = true;
+            //SmackConfiguration.DEBUG = true;
 
             XMPPTCPConnection x0 = getConnection(0);
             XMPPTCPConnection x1 = getConnection(1);
@@ -368,7 +368,7 @@ public class JingleMediaTest extends SmackTestCase {
                         Thread.sleep(20000);
 
                         //js0.sendFormattedError(JingleError.UNSUPPORTED_TRANSPORTS);
-                        js0.sendPacket(js0.createJingleError(null, JingleError.UNSUPPORTED_TRANSPORTS));
+                        js0.sendStanza(js0.createJingleError(null, JingleError.UNSUPPORTED_TRANSPORTS));
                         
 
                         Thread.sleep(20000);
@@ -399,7 +399,7 @@ public class JingleMediaTest extends SmackTestCase {
     public void testCompleteWithBridgeB() {
         try {
 
-            //TCPConnection.DEBUG_ENABLED = true;
+            //SmackConfiguration.DEBUG = true;
 
             XMPPTCPConnection x0 = getConnection(0);
             XMPPTCPConnection x1 = getConnection(1);

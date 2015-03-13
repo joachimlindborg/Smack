@@ -16,17 +16,16 @@
  */
 package org.jivesoftware.smackx.amp.packet;
 
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smackx.amp.AMPDeliverCondition;
 import org.jivesoftware.smackx.amp.AMPExpireAtCondition;
 import org.jivesoftware.smackx.amp.AMPMatchResourceCondition;
 
-public class AMPExtension implements PacketExtension {
+public class AMPExtension implements ExtensionElement {
 
     public static final String NAMESPACE = "http://jabber.org/protocol/amp";
     public static final String ELEMENT = "amp";
@@ -82,12 +81,12 @@ public class AMPExtension implements PacketExtension {
     }
 
     /**
-     * Returns a Collection of the rules in the packet.
+     * Returns a unmodifiable List of the rules in the packet.
      *
-     * @return a Collection of the rules in the packet.
+     * @return a unmodifiable List of the rules in the packet.
      */
-    public Collection<Rule> getRules() {
-        return Collections.unmodifiableList(new ArrayList<Rule>(rules));
+    public List<Rule> getRules() {
+        return Collections.unmodifiableList(rules);
     }
 
     /**

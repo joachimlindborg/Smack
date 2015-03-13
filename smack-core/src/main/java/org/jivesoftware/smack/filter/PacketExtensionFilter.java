@@ -17,16 +17,18 @@
 
 package org.jivesoftware.smack.filter;
 
-import org.jivesoftware.smack.packet.Packet;
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.Stanza;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smack.util.StringUtils;
 
 /**
  * Filters for packets with a particular type of packet extension.
  *
  * @author Matt Tucker
+ * @deprecated use {@link StanzaExtensionFilter} instead.
  */
-public class PacketExtensionFilter implements PacketFilter {
+@Deprecated
+public class PacketExtensionFilter implements StanzaFilter {
 
     private final String elementName;
     private final String namespace;
@@ -40,9 +42,8 @@ public class PacketExtensionFilter implements PacketFilter {
      * @param namespace the XML namespace of the packet extension.
      */
     public PacketExtensionFilter(String elementName, String namespace) {
-        if (StringUtils.isNullOrEmpty(namespace)) {
-            throw new IllegalArgumentException("namespace must not be null or empty");
-        }
+        StringUtils.requireNotNullOrEmpty(namespace, "namespace must not be null or empty");
+
         this.elementName = elementName;
         this.namespace = namespace;
     }
@@ -57,15 +58,21 @@ public class PacketExtensionFilter implements PacketFilter {
         this(null, namespace);
     }
 
-    public PacketExtensionFilter(PacketExtension packetExtension) {
+    /**
+     * Creates a new packet extension filter for the given packet extension.
+     *
+     * @param packetExtension
+     */
+    public PacketExtensionFilter(ExtensionElement packetExtension) {
         this(packetExtension.getElementName(), packetExtension.getNamespace());
     }
 
-    public PacketExtensionFilter(Class<? extends PacketExtension> packetExtensionClass) throws InstantiationException, IllegalAccessException {
-        this(packetExtensionClass.newInstance());
+    public boolean accept(Stanza packet) {
+        return packet.hasExtension(elementName, namespace);
     }
 
-    public boolean accept(Packet packet) {
-        return packet.hasExtension(elementName, namespace);
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + ": element=" + elementName + " namespace=" + namespace;
     }
 }

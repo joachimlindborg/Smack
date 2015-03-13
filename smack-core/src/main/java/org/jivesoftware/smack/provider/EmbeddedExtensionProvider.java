@@ -16,17 +16,14 @@
  */
 package org.jivesoftware.smack.provider;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.jivesoftware.smack.SmackException;
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smack.util.PacketParserUtils;
 import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserException;
 
 /**
  * 
@@ -61,7 +58,7 @@ import org.xmlpull.v1.XmlPullParserException;
  * <tt>ItemsProvider</tt> extends {@link EmbeddedExtensionProvider}
  * <tt>ItemProvider</tt> extends {@link EmbeddedExtensionProvider}
  * and
- * AtomProvider extends {@link PacketExtensionProvider}
+ * AtomProvider extends {@link ExtensionElementProvider}
  * 
  * These classes are then registered in the meta-inf/smack.providers file
  * as follows.
@@ -81,33 +78,32 @@ import org.xmlpull.v1.XmlPullParserException;
  * 
  * @author Robin Collier
  */
-abstract public class EmbeddedExtensionProvider<PE extends PacketExtension> extends PacketExtensionProvider<PE>
-{
+public abstract class EmbeddedExtensionProvider<PE extends ExtensionElement> extends ExtensionElementProvider<PE> {
 
     @Override
-    final public PE parse(XmlPullParser parser, int initialDepth)
-                    throws XmlPullParserException, IOException, SmackException {
-        String namespace = parser.getNamespace();
-        String name = parser.getName();
-        Map<String, String> attMap = new HashMap<String, String>();
-        
-        for(int i=0; i<parser.getAttributeCount(); i++)
-        {
-        	attMap.put(parser.getAttributeName(i), parser.getAttributeValue(i));
+    public final PE parse(XmlPullParser parser, int initialDepth) throws Exception {
+        final String namespace = parser.getNamespace();
+        final String name = parser.getName();
+        final int attributeCount = parser.getAttributeCount();
+        Map<String, String> attMap = new HashMap<>(attributeCount);
+
+        for (int i = 0; i < attributeCount; i++) {
+            attMap.put(parser.getAttributeName(i), parser.getAttributeValue(i));
         }
-        List<PacketExtension> extensions = new ArrayList<PacketExtension>();
 
-        int tag;
-        do
-        {
-            tag = parser.next();
+        List<ExtensionElement> extensions = new ArrayList<>();
+        int event;
+        do {
+            event = parser.next();
 
-            if (tag == XmlPullParser.START_TAG)
-                PacketParserUtils.addPacketExtension(extensions, parser);
-        } while (!(tag == XmlPullParser.END_TAG && parser.getDepth() == initialDepth));
+            if (event == XmlPullParser.START_TAG)
+                PacketParserUtils.addExtensionElement(extensions, parser);
+        }
+        while (!(event == XmlPullParser.END_TAG && parser.getDepth() == initialDepth));
 
-		return createReturnExtension(name, namespace, attMap, extensions);
-	}
+        return createReturnExtension(name, namespace, attMap, extensions);
+    }
 
-	abstract protected PE createReturnExtension(String currentElement, String currentNamespace, Map<String, String> attributeMap, List<? extends PacketExtension> content);
+    protected abstract PE createReturnExtension(String currentElement, String currentNamespace,
+                    Map<String, String> attributeMap, List<? extends ExtensionElement> content);
 }

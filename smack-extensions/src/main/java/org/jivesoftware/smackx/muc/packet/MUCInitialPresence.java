@@ -18,8 +18,8 @@
 package org.jivesoftware.smackx.muc.packet;
 
 import org.jivesoftware.smack.packet.NamedElement;
-import org.jivesoftware.smack.packet.Packet;
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.Stanza;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smack.util.XmlStringBuilder;
 import org.jxmpp.util.XmppDateTime;
 
@@ -37,7 +37,7 @@ import java.util.Date;
  * @author Gaston Dombiak
  * @see MUCInitialPresence#setHistory(MUCInitialPresence.History)
  */
-public class MUCInitialPresence implements PacketExtension {
+public class MUCInitialPresence implements ExtensionElement {
 
     public static final String ELEMENT = "x";
     public static final String NAMESPACE = "http://jabber.org/protocol/muc";
@@ -108,10 +108,10 @@ public class MUCInitialPresence implements PacketExtension {
      *
      * @param packet
      * @return the MUCInitialPresence PacketExtension or {@code null}
-     * @deprecated use {@link #from(Packet)} instead
+     * @deprecated use {@link #from(Stanza)} instead
      */
     @Deprecated
-    public static MUCInitialPresence getFrom(Packet packet) {
+    public static MUCInitialPresence getFrom(Stanza packet) {
         return from(packet);
     }
 
@@ -121,7 +121,7 @@ public class MUCInitialPresence implements PacketExtension {
      * @param packet
      * @return the MUCInitialPresence PacketExtension or {@code null}
      */
-    public static MUCInitialPresence from(Packet packet) {
+    public static MUCInitialPresence from(Stanza packet) {
         return packet.getExtension(ELEMENT, NAMESPACE);
     }
 

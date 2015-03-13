@@ -16,6 +16,7 @@
  */
 package org.jivesoftware.smack;
 
+import java.io.IOException;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -23,7 +24,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import org.jivesoftware.smack.SmackException.NotConnectedException;
 import org.jivesoftware.smack.packet.IQ;
 import org.jivesoftware.smack.packet.Message;
-import org.jivesoftware.smack.packet.Packet;
+import org.jivesoftware.smack.packet.Stanza;
 import org.jivesoftware.smack.packet.IQ.Type;
 
 /**
@@ -33,17 +34,12 @@ import org.jivesoftware.smack.packet.IQ.Type;
  */
 public class ThreadedDummyConnection extends DummyConnection {
     private BlockingQueue<IQ> replyQ = new ArrayBlockingQueue<IQ>(1);
-    private BlockingQueue<Packet> messageQ = new LinkedBlockingQueue<Packet>(5);
+    private BlockingQueue<Stanza> messageQ = new LinkedBlockingQueue<Stanza>(5);
     private volatile boolean timeout = false;
 
     @Override
-    public void sendPacket(Packet packet) {
-        try {
-            super.sendPacket(packet);
-        }
-        catch (NotConnectedException e) {
-            e.printStackTrace();
-        }
+    public void sendStanza(Stanza packet) throws NotConnectedException, InterruptedException {
+        super.sendStanza(packet);
 
         if (packet instanceof IQ && !timeout) {
             timeout = false;
@@ -56,7 +52,7 @@ public class ThreadedDummyConnection extends DummyConnection {
                 replyPacket = IQ.createResultIQ((IQ) packet);
                 replyQ.add(replyPacket);
             }
-            replyPacket.setPacketID(packet.getPacketID());
+            replyPacket.setStanzaId(packet.getStanzaId());
             replyPacket.setFrom(packet.getTo());
             replyPacket.setTo(packet.getFrom());
             replyPacket.setType(Type.result);
@@ -66,9 +62,9 @@ public class ThreadedDummyConnection extends DummyConnection {
     }
 
     /**
-     * Calling this method will cause the next sendPacket call with an IQ packet to timeout.
+     * Calling this method will cause the next sendStanza call with an IQ packet to timeout.
      * This is accomplished by simply stopping the auto creating of the reply packet 
-     * or processing one that was entered via {@link #processPacket(Packet)}.
+     * or processing one that was entered via {@link #processPacket(Stanza)}.
      */
     public void setTimeout() {
         timeout = true;
@@ -90,9 +86,9 @@ public class ThreadedDummyConnection extends DummyConnection {
     }
 
     class ProcessQueue extends Thread {
-        private BlockingQueue<? extends Packet> processQ;
+        private BlockingQueue<? extends Stanza> processQ;
 
-        ProcessQueue(BlockingQueue<? extends Packet> queue) {
+        ProcessQueue(BlockingQueue<? extends Stanza> queue) {
             processQ = queue;
         }
 
@@ -104,6 +100,12 @@ public class ThreadedDummyConnection extends DummyConnection {
                 e.printStackTrace();
             }
         }
+    }
+
+    public static ThreadedDummyConnection newInstance() throws SmackException, IOException, XMPPException, InterruptedException {
+        ThreadedDummyConnection threadedDummyConnection = new ThreadedDummyConnection();
+        threadedDummyConnection.connect();
+        return threadedDummyConnection;
     }
 
 }

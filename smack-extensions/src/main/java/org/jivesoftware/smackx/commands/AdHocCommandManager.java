@@ -19,25 +19,25 @@ package org.jivesoftware.smackx.commands;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.jivesoftware.smack.ConnectionCreationListener;
 import org.jivesoftware.smack.Manager;
-import org.jivesoftware.smack.PacketListener;
 import org.jivesoftware.smack.SmackException;
+import org.jivesoftware.smack.SmackException.NoResponseException;
 import org.jivesoftware.smack.SmackException.NotConnectedException;
 import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.XMPPConnectionRegistry;
 import org.jivesoftware.smack.XMPPException;
 import org.jivesoftware.smack.XMPPException.XMPPErrorException;
-import org.jivesoftware.smack.filter.PacketFilter;
-import org.jivesoftware.smack.filter.PacketTypeFilter;
+import org.jivesoftware.smack.iqrequest.AbstractIqRequestHandler;
+import org.jivesoftware.smack.iqrequest.IQRequestHandler.Mode;
 import org.jivesoftware.smack.packet.IQ;
-import org.jivesoftware.smack.packet.Packet;
 import org.jivesoftware.smack.packet.XMPPError;
 import org.jivesoftware.smack.util.StringUtils;
 import org.jivesoftware.smackx.commands.AdHocCommand.Action;
@@ -48,12 +48,13 @@ import org.jivesoftware.smackx.disco.ServiceDiscoveryManager;
 import org.jivesoftware.smackx.disco.packet.DiscoverInfo;
 import org.jivesoftware.smackx.disco.packet.DiscoverItems;
 import org.jivesoftware.smackx.xdata.Form;
+import org.jxmpp.jid.Jid;
 
 /**
  * An AdHocCommandManager is responsible for keeping the list of available
  * commands offered by a service and for processing commands requests.
  *
- * Pass in a XMPPConnection instance to
+ * Pass in an XMPPConnection instance to
  * {@link #getAddHocCommandsManager(org.jivesoftware.smack.XMPPConnection)} in order to
  * get an instance of this class. 
  * 
@@ -62,17 +63,18 @@ import org.jivesoftware.smackx.xdata.Form;
 public class AdHocCommandManager extends Manager {
     public static final String NAMESPACE = "http://jabber.org/protocol/commands";
 
+    private static final Logger LOGGER = Logger.getLogger(AdHocCommandManager.class.getName());
+
     /**
      * The session time out in seconds.
      */
     private static final int SESSION_TIMEOUT = 2 * 60;
 
     /**
-     * Map a XMPPConnection with it AdHocCommandManager. This map have a key-value
+     * Map an XMPPConnection with it AdHocCommandManager. This map have a key-value
      * pair for every active connection.
      */
-    private static Map<XMPPConnection, AdHocCommandManager> instances =
-            Collections.synchronizedMap(new WeakHashMap<XMPPConnection, AdHocCommandManager>());
+    private static Map<XMPPConnection, AdHocCommandManager> instances = new WeakHashMap<>();
 
     /**
      * Register the listener for all the connection creations. When a new
@@ -96,7 +98,10 @@ public class AdHocCommandManager extends Manager {
      */
     public static synchronized AdHocCommandManager getAddHocCommandsManager(XMPPConnection connection) {
         AdHocCommandManager ahcm = instances.get(connection);
-        if (ahcm == null) ahcm = new AdHocCommandManager(connection);
+        if (ahcm == null) {
+            ahcm = new AdHocCommandManager(connection);
+            instances.put(connection, ahcm);
+        }
         return ahcm;
     }
 
@@ -120,14 +125,15 @@ public class AdHocCommandManager extends Manager {
     /**
      * Thread that reaps stale sessions.
      */
+    // FIXME The session sweeping is horrible implemented. The thread will never stop running. A different approach must
+    // be implemented. For example one that does stop reaping sessions and the thread if there are no more, and restarts
+    // the reaping process on demand. Or for every command a scheduled task should be created that removes the session
+    // if it's timed out. See SMACK-624.
     private Thread sessionsSweeper;
 
     private AdHocCommandManager(XMPPConnection connection) {
         super(connection);
         this.serviceDiscoveryManager = ServiceDiscoveryManager.getInstanceFor(connection);
-        
-        // Register the new instance and associate it with the connection
-        instances.put(connection, this);
 
         // Add the feature to the service discovery manage to show that this
         // connection supports the AdHoc-Commands protocol.
@@ -162,20 +168,20 @@ public class AdHocCommandManager extends Manager {
 
         // The packet listener and the filter for processing some AdHoc Commands
         // Packets
-        PacketListener listener = new PacketListener() {
-            public void processPacket(Packet packet) {
-                AdHocCommandData requestData = (AdHocCommandData) packet;
+        connection.registerIQRequestHandler(new AbstractIqRequestHandler(AdHocCommandData.ELEMENT,
+                        AdHocCommandData.NAMESPACE, IQ.Type.set, Mode.async) {
+            @Override
+            public IQ handleIQRequest(IQ iqRequest) {
+                AdHocCommandData requestData = (AdHocCommandData) iqRequest;
                 try {
-                    processAdHocCommand(requestData);
+                    return processAdHocCommand(requestData);
                 }
-                catch (SmackException e) {
-                    return;
+                catch (InterruptedException | NoResponseException | NotConnectedException e) {
+                    LOGGER.log(Level.INFO, "processAdHocCommand threw exceptino", e);
+                    return null;
                 }
             }
-        };
-
-        PacketFilter filter = new PacketTypeFilter(AdHocCommandData.class);
-        connection.addPacketListener(listener, filter);
+        });
 
         sessionsSweeper = null;
     }
@@ -247,8 +253,9 @@ public class AdHocCommandManager extends Manager {
      * @return the discovered items.
      * @throws XMPPException if the operation failed for some reason.
      * @throws SmackException if there was no response from the server.
+     * @throws InterruptedException 
      */
-    public DiscoverItems discoverCommands(String jid) throws XMPPException, SmackException {
+    public DiscoverItems discoverCommands(Jid jid) throws XMPPException, SmackException, InterruptedException {
         return serviceDiscoveryManager.discoverItems(jid, NAMESPACE);
     }
 
@@ -258,8 +265,9 @@ public class AdHocCommandManager extends Manager {
      * @param jid the full JID to publish the commands to.
      * @throws XMPPException if the operation failed for some reason.
      * @throws SmackException if there was no response from the server.
+     * @throws InterruptedException 
      */
-    public void publishCommands(String jid) throws XMPPException, SmackException {
+    public void publishCommands(Jid jid) throws XMPPException, SmackException, InterruptedException {
         // Collects the commands to publish as items
         DiscoverItems discoverItems = new DiscoverItems();
         Collection<AdHocCommandInfo> xCommandsList = getRegisteredCommands();
@@ -284,7 +292,7 @@ public class AdHocCommandManager extends Manager {
      * @param node the identifier of the command
      * @return a local instance equivalent to the remote command.
      */
-    public RemoteCommand getRemoteCommand(String jid, String node) {
+    public RemoteCommand getRemoteCommand(Jid jid, String node) {
         return new RemoteCommand(connection(), node, jid);
     }
 
@@ -311,18 +319,15 @@ public class AdHocCommandManager extends Manager {
      *
      * @param requestData
      *            the packet to process.
-     * @throws SmackException if there was no response from the server.
+     * @throws NotConnectedException
+     * @throws NoResponseException
+     * @throws InterruptedException 
      */
-    private void processAdHocCommand(AdHocCommandData requestData) throws SmackException {
-        // Only process requests of type SET
-        if (requestData.getType() != IQ.Type.set) {
-            return;
-        }
-
+    private IQ processAdHocCommand(AdHocCommandData requestData) throws NoResponseException, NotConnectedException, InterruptedException {
         // Creates the response with the corresponding data
         AdHocCommandData response = new AdHocCommandData();
         response.setTo(requestData.getFrom());
-        response.setPacketID(requestData.getPacketID());
+        response.setStanzaId(requestData.getStanzaId());
         response.setNode(requestData.getNode());
         response.setId(requestData.getTo());
 
@@ -335,8 +340,7 @@ public class AdHocCommandManager extends Manager {
             if (!commands.containsKey(commandNode)) {
                 // Requested command does not exist so return
                 // item_not_found error.
-                respondError(response, XMPPError.Condition.item_not_found);
-                return;
+                return respondError(response, XMPPError.Condition.item_not_found);
             }
 
             // Create new session ID
@@ -354,24 +358,21 @@ public class AdHocCommandManager extends Manager {
                 // Answer forbidden error if requester permissions are not
                 // enough to execute the requested command
                 if (!command.hasPermission(requestData.getFrom())) {
-                    respondError(response, XMPPError.Condition.forbidden);
-                    return;
+                    return respondError(response, XMPPError.Condition.forbidden);
                 }
 
                 Action action = requestData.getAction();
 
                 // If the action is unknown then respond an error.
                 if (action != null && action.equals(Action.unknown)) {
-                    respondError(response, XMPPError.Condition.bad_request,
+                    return respondError(response, XMPPError.Condition.bad_request,
                             AdHocCommand.SpecificErrorCondition.malformedAction);
-                    return;
                 }
 
                 // If the action is not execute, then it is an invalid action.
                 if (action != null && !action.equals(Action.execute)) {
-                    respondError(response, XMPPError.Condition.bad_request,
+                    return respondError(response, XMPPError.Condition.bad_request,
                             AdHocCommand.SpecificErrorCondition.badAction);
-                    return;
                 }
 
                 // Increase the state number, so the command knows in witch
@@ -434,7 +435,7 @@ public class AdHocCommandManager extends Manager {
                 }
 
                 // Sends the response packet
-                connection().sendPacket(response);
+                return response;
 
             }
             catch (XMPPErrorException e) {
@@ -450,7 +451,7 @@ public class AdHocCommandManager extends Manager {
                     response.setStatus(Status.canceled);
                     executingCommands.remove(sessionId);
                 }
-                respondError(response, error);
+                return respondError(response, error);
             }
         }
         else {
@@ -460,9 +461,8 @@ public class AdHocCommandManager extends Manager {
             // This also handles if the command was removed in the meanwhile
             // of getting the key and the value of the map.
             if (command == null) {
-                respondError(response, XMPPError.Condition.bad_request,
+                return respondError(response, XMPPError.Condition.bad_request,
                         AdHocCommand.SpecificErrorCondition.badSessionid);
-                return;
             }
 
             // Check if the Session data has expired (default is 10 minutes)
@@ -472,9 +472,8 @@ public class AdHocCommandManager extends Manager {
                 executingCommands.remove(sessionId);
 
                 // Answer a not_allowed error (session-expired)
-                respondError(response, XMPPError.Condition.not_allowed,
+                return respondError(response, XMPPError.Condition.not_allowed,
                         AdHocCommand.SpecificErrorCondition.sessionExpired);
-                return;
             }
 
             /*
@@ -487,9 +486,8 @@ public class AdHocCommandManager extends Manager {
 
                 // If the action is unknown the respond an error
                 if (action != null && action.equals(Action.unknown)) {
-                    respondError(response, XMPPError.Condition.bad_request,
+                    return respondError(response, XMPPError.Condition.bad_request,
                             AdHocCommand.SpecificErrorCondition.malformedAction);
-                    return;
                 }
 
                 // If the user didn't specify an action or specify the execute
@@ -501,9 +499,8 @@ public class AdHocCommandManager extends Manager {
                 // Check that the specified action was previously
                 // offered
                 if (!command.isValidAction(action)) {
-                    respondError(response, XMPPError.Condition.bad_request,
+                    return respondError(response, XMPPError.Condition.bad_request,
                             AdHocCommand.SpecificErrorCondition.badAction);
-                    return;
                 }
 
                 try {
@@ -549,7 +546,7 @@ public class AdHocCommandManager extends Manager {
                         executingCommands.remove(sessionId);
                     }
 
-                    connection().sendPacket(response);
+                    return response;
                 }
                 catch (XMPPErrorException e) {
                     // If there is an exception caused by the next, complete,
@@ -564,7 +561,7 @@ public class AdHocCommandManager extends Manager {
                         response.setStatus(Status.canceled);
                         executingCommands.remove(sessionId);
                     }
-                    respondError(response, error);
+                    return respondError(response, error);
                 }
             }
         }
@@ -577,9 +574,9 @@ public class AdHocCommandManager extends Manager {
      * @param condition the condition of the error.
      * @throws NotConnectedException 
      */
-    private void respondError(AdHocCommandData response,
-            XMPPError.Condition condition) throws NotConnectedException {
-        respondError(response, new XMPPError(condition));
+    private IQ respondError(AdHocCommandData response,
+            XMPPError.Condition condition) {
+        return respondError(response, new XMPPError(condition));
     }
 
     /**
@@ -590,12 +587,11 @@ public class AdHocCommandManager extends Manager {
      * @param specificCondition the adhoc command error condition.
      * @throws NotConnectedException 
      */
-    private void respondError(AdHocCommandData response, XMPPError.Condition condition,
-            AdHocCommand.SpecificErrorCondition specificCondition) throws NotConnectedException
+    private static IQ respondError(AdHocCommandData response, XMPPError.Condition condition,
+            AdHocCommand.SpecificErrorCondition specificCondition)
     {
-        XMPPError error = new XMPPError(condition);
-        error.addExtension(new AdHocCommandData.SpecificError(specificCondition));
-        respondError(response, error);
+        XMPPError error = new XMPPError(condition, new AdHocCommandData.SpecificError(specificCondition));
+        return respondError(response, error);
     }
 
     /**
@@ -605,10 +601,10 @@ public class AdHocCommandManager extends Manager {
      * @param error the error to send.
      * @throws NotConnectedException 
      */
-    private void respondError(AdHocCommandData response, XMPPError error) throws NotConnectedException {
+    private static IQ respondError(AdHocCommandData response, XMPPError error) {
         response.setType(IQ.Type.error);
         response.setError(error);
-        connection().sendPacket(response);
+        return response;
     }
 
     /**
@@ -657,10 +653,10 @@ public class AdHocCommandManager extends Manager {
 
         private String node;
         private String name;
-        private String ownerJID;
+        private final Jid ownerJID;
         private LocalCommandFactory factory;
 
-        public AdHocCommandInfo(String node, String name, String ownerJID,
+        public AdHocCommandInfo(String node, String name, Jid ownerJID,
                 LocalCommandFactory factory)
         {
             this.node = node;
@@ -683,7 +679,7 @@ public class AdHocCommandManager extends Manager {
             return node;
         }
 
-        public String getOwnerJID() {
+        public Jid getOwnerJID() {
             return ownerJID;
         }
     }

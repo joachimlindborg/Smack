@@ -27,6 +27,7 @@ import java.util.LinkedList;
 
 import org.jivesoftware.smack.packet.IQ;
 import org.jivesoftware.smack.test.util.SmackTestSuite;
+import org.jivesoftware.smack.util.StringUtils;
 import org.jivesoftware.smack.util.stringencoder.Base32;
 import org.jivesoftware.smack.util.stringencoder.StringEncoder;
 import org.jivesoftware.smackx.InitExtensions;
@@ -37,6 +38,8 @@ import org.jivesoftware.smackx.xdata.FormField;
 import org.jivesoftware.smackx.xdata.packet.DataForm;
 import org.junit.Before;
 import org.junit.Test;
+import org.jxmpp.jid.impl.JidCreate;
+import org.jxmpp.stringprep.XmppStringprepException;
 
 
 public class EntityCapsManagerTest extends InitExtensions {
@@ -49,13 +52,14 @@ public class EntityCapsManagerTest extends InitExtensions {
     /**
      * <a href="http://xmpp.org/extensions/xep-0115.html#ver-gen-complex">XEP-
      * 0115 Complex Generation Example</a>
+     * @throws XmppStringprepException 
      */
     @Test
-    public void testComplexGenerationExample() {
+    public void testComplexGenerationExample() throws XmppStringprepException {
         DiscoverInfo di = createComplexSamplePacket();
 
-        String ver = EntityCapsManager.generateVerificationString(di, "sha-1");
-        assertEquals("q07IKJEyjvHSyhy//CH0CxmKi8w=", ver);
+        CapsVersionAndHash versionAndHash = EntityCapsManager.generateVerificationString(di, StringUtils.SHA1);
+        assertEquals("q07IKJEyjvHSyhy//CH0CxmKi8w=", versionAndHash.version);
     }
 
     @Test
@@ -65,13 +69,13 @@ public class EntityCapsManagerTest extends InitExtensions {
     }
 
     @Test
-    public void testVerificationDuplicateFeatures() {
+    public void testVerificationDuplicateFeatures() throws XmppStringprepException {
         DiscoverInfo di = createMalformedDiscoverInfo();
         assertTrue(di.containsDuplicateFeatures());
     }
 
     @Test
-    public void testVerificationDuplicateIdentities() {
+    public void testVerificationDuplicateIdentities() throws XmppStringprepException {
         DiscoverInfo di = createMalformedDiscoverInfo();
         assertTrue(di.containsDuplicateIdentities());
     }
@@ -82,7 +86,8 @@ public class EntityCapsManagerTest extends InitExtensions {
         EntityCapsManager.setPersistentCache(cache);
 
         DiscoverInfo di = createComplexSamplePacket();
-        String nodeVer = di.getNode() + "#" + EntityCapsManager.generateVerificationString(di, "sha-1");
+        CapsVersionAndHash versionAndHash = EntityCapsManager.generateVerificationString(di, StringUtils.SHA1);
+        String nodeVer = di.getNode() + "#" + versionAndHash.version;
 
         // Save the data in EntityCapsManager
         EntityCapsManager.addDiscoverInfoByNode(nodeVer, di);
@@ -95,11 +100,11 @@ public class EntityCapsManagerTest extends InitExtensions {
         assertEquals(di.toXML().toString(), restored_di.toXML().toString());
     }
 
-    private static DiscoverInfo createComplexSamplePacket() {
+    private static DiscoverInfo createComplexSamplePacket() throws XmppStringprepException {
         DiscoverInfo di = new DiscoverInfo();
-        di.setFrom("benvolio@capulet.lit/230193");
-        di.setPacketID("disco1");
-        di.setTo("juliet@capulet.lit/chamber");
+        di.setFrom(JidCreate.from("benvolio@capulet.lit/230193"));
+        di.setStanzaId("disco1");
+        di.setTo(JidCreate.from("juliet@capulet.lit/chamber"));
         di.setType(IQ.Type.result);
 
         Collection<DiscoverInfo.Identity> identities = new LinkedList<DiscoverInfo.Identity>();
@@ -114,14 +119,14 @@ public class EntityCapsManagerTest extends InitExtensions {
         di.addFeature("http://jabber.org/protocol/muc");
         di.addFeature("http://jabber.org/protocol/disco#info");
 
-        DataForm df = new DataForm("result");
+        DataForm df = new DataForm(DataForm.Type.result);
 
         FormField ff = new FormField("os");
         ff.addValue("Mac");
         df.addField(ff);
 
         ff = new FormField("FORM_TYPE");
-        ff.setType("hidden");
+        ff.setType(FormField.Type.hidden);
         ff.addValue("urn:xmpp:dataforms:softwareinfo");
         df.addField(ff);
 
@@ -146,11 +151,11 @@ public class EntityCapsManagerTest extends InitExtensions {
         return di;
     }
 
-    private static DiscoverInfo createMalformedDiscoverInfo() {
+    private static DiscoverInfo createMalformedDiscoverInfo() throws XmppStringprepException {
         DiscoverInfo di = new DiscoverInfo();
-        di.setFrom("benvolio@capulet.lit/230193");
-        di.setPacketID("disco1");
-        di.setTo(")juliet@capulet.lit/chamber");
+        di.setFrom(JidCreate.from("benvolio@capulet.lit/230193"));
+        di.setStanzaId("disco1");
+        di.setTo(JidCreate.from(")juliet@capulet.lit/chamber"));
         di.setType(IQ.Type.result);
 
         Collection<DiscoverInfo.Identity> identities = new LinkedList<DiscoverInfo.Identity>();
@@ -171,14 +176,14 @@ public class EntityCapsManagerTest extends InitExtensions {
         // Failure 2: Duplicate features
         di.addFeature("http://jabber.org/protocol/disco#info");
 
-        DataForm df = new DataForm("result");
+        DataForm df = new DataForm(DataForm.Type.result);
 
         FormField ff = new FormField("os");
         ff.addValue("Mac");
         df.addField(ff);
 
         ff = new FormField("FORM_TYPE");
-        ff.setType("hidden");
+        ff.setType(FormField.Type.hidden);
         ff.addValue("urn:xmpp:dataforms:softwareinfo");
         df.addField(ff);
 
@@ -203,10 +208,10 @@ public class EntityCapsManagerTest extends InitExtensions {
 
         // Failure 3: Another service discovery information form with the same
         // FORM_TYPE
-        df = new DataForm("result");
+        df = new DataForm(DataForm.Type.result);
 
         ff = new FormField("FORM_TYPE");
-        ff.setType("hidden");
+        ff.setType(FormField.Type.hidden);
         ff.addValue("urn:xmpp:dataforms:softwareinfo");
         df.addField(ff);
 

@@ -21,8 +21,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import org.jivesoftware.smack.ThreadedDummyConnection;
-import org.jivesoftware.smack.packet.Packet;
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.Stanza;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smack.util.PacketParserUtils;
 import org.jivesoftware.smackx.InitExtensions;
 import org.jivesoftware.smackx.pubsub.packet.PubSubNamespace;
@@ -43,7 +43,7 @@ public class ItemValidationTest extends InitExtensions {
 	public void setUp() throws Exception
 	{
 		// Uncomment this to enable debug output
-		// XMPPConnection.DEBUG_ENABLED = true;
+		// SmackConfiguration.DEBUG = true;
 
 		connection = new ThreadedDummyConnection();
 		connection.connect();
@@ -103,8 +103,8 @@ public class ItemValidationTest extends InitExtensions {
                  "</event>" + 
             "</message>");
         
-        Packet message = PacketParserUtils.parseMessage(parser);
-        PacketExtension eventExt = message.getExtension(PubSubNamespace.EVENT.getXmlns());
+        Stanza message = PacketParserUtils.parseMessage(parser);
+        ExtensionElement eventExt = message.getExtension(PubSubNamespace.EVENT.getXmlns());
         
         assertTrue(eventExt instanceof EventElement);
         EventElement event = (EventElement) eventExt;
@@ -113,7 +113,7 @@ public class ItemValidationTest extends InitExtensions {
         assertTrue(event.getExtensions().get(0) instanceof ItemsExtension);
         assertEquals(1, ((ItemsExtension)event.getExtensions().get(0)).items.size());
         
-        PacketExtension itemExt = ((ItemsExtension)event.getExtensions().get(0)).items.get(0);
+        ExtensionElement itemExt = ((ItemsExtension)event.getExtensions().get(0)).items.get(0);
         assertTrue(itemExt instanceof Item);
         assertEquals("testid1", ((Item)itemExt).getId());
 	}
@@ -134,10 +134,10 @@ public class ItemValidationTest extends InitExtensions {
                  "</event>" + 
             "</message>");
         
-        Packet message = PacketParserUtils.parseMessage(parser);
-        PacketExtension eventExt = message.getExtension(PubSubNamespace.EVENT.getXmlns());
+        Stanza message = PacketParserUtils.parseMessage(parser);
+        ExtensionElement eventExt = message.getExtension(PubSubNamespace.EVENT.getXmlns());
         EventElement event = (EventElement) eventExt;
-        PacketExtension itemExt = ((ItemsExtension)event.getExtensions().get(0)).items.get(0);
+        ExtensionElement itemExt = ((ItemsExtension)event.getExtensions().get(0)).items.get(0);
 
         assertTrue(itemExt instanceof PayloadItem<?>);
         PayloadItem<?> item = (PayloadItem<?>)itemExt;
@@ -181,10 +181,10 @@ public class ItemValidationTest extends InitExtensions {
                  "</event>" + 
             "</message>");
         
-        Packet message = PacketParserUtils.parseMessage(parser);
-        PacketExtension eventExt = message.getExtension(PubSubNamespace.EVENT.getXmlns());
+        Stanza message = PacketParserUtils.parseMessage(parser);
+        ExtensionElement eventExt = message.getExtension(PubSubNamespace.EVENT.getXmlns());
         EventElement event = (EventElement) eventExt;
-        PacketExtension itemExt = ((ItemsExtension)event.getExtensions().get(0)).items.get(0);
+        ExtensionElement itemExt = ((ItemsExtension)event.getExtensions().get(0)).items.get(0);
 
         assertTrue(itemExt instanceof PayloadItem<?>);
         PayloadItem<?> item = (PayloadItem<?>)itemExt;
@@ -214,8 +214,8 @@ public class ItemValidationTest extends InitExtensions {
                  "</event>" + 
             "</message>");
         
-        Packet message = PacketParserUtils.parseMessage(parser);
-        PacketExtension eventExt = message.getExtension(PubSubNamespace.EVENT.getXmlns());
+        Stanza message = PacketParserUtils.parseMessage(parser);
+        ExtensionElement eventExt = message.getExtension(PubSubNamespace.EVENT.getXmlns());
         
         assertTrue(eventExt instanceof EventElement);
         EventElement event = (EventElement) eventExt;
@@ -224,7 +224,7 @@ public class ItemValidationTest extends InitExtensions {
         assertTrue(event.getExtensions().get(0) instanceof ItemsExtension);
         assertEquals(1, ((ItemsExtension)event.getExtensions().get(0)).items.size());
         
-        PacketExtension itemExt = ((ItemsExtension)event.getExtensions().get(0)).items.get(0);
+        ExtensionElement itemExt = ((ItemsExtension)event.getExtensions().get(0)).items.get(0);
         assertTrue(itemExt instanceof PayloadItem<?>);
         PayloadItem<?> item = (PayloadItem<?>)itemExt;
         

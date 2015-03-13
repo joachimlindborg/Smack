@@ -17,14 +17,15 @@
 
 package org.jivesoftware.smackx.xdata.provider;
 
-import org.jivesoftware.smack.SmackException;
-import org.jivesoftware.smack.packet.RosterPacket;
-import org.jivesoftware.smack.provider.PacketExtensionProvider;
-import org.jivesoftware.smack.provider.RosterPacketProvider;
+import org.jivesoftware.smack.provider.ExtensionElementProvider;
+import org.jivesoftware.smack.roster.packet.RosterPacket;
+import org.jivesoftware.smack.roster.provider.RosterPacketProvider;
 import org.jivesoftware.smackx.xdata.FormField;
 import org.jivesoftware.smackx.xdata.packet.DataForm;
 import org.jivesoftware.smackx.xdatalayout.packet.DataLayout;
 import org.jivesoftware.smackx.xdatalayout.provider.DataLayoutProvider;
+import org.jivesoftware.smackx.xdatavalidation.packet.ValidateElement;
+import org.jivesoftware.smackx.xdatavalidation.provider.DataValidationProvider;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -37,12 +38,13 @@ import java.util.List;
  * 
  * @author Gaston Dombiak
  */
-public class DataFormProvider extends PacketExtensionProvider<DataForm> {
+public class DataFormProvider extends ExtensionElementProvider<DataForm> {
 
     @Override
-    public DataForm parse(XmlPullParser parser, int initialDepth) throws XmlPullParserException, IOException,
-                    SmackException {
-        DataForm dataForm = new DataForm(parser.getAttributeValue("", "type"));
+    public DataForm parse(XmlPullParser parser, int initialDepth) throws
+                    Exception {
+        DataForm.Type dataFormType = DataForm.Type.fromString(parser.getAttributeValue("", "type"));
+        DataForm dataForm = new DataForm(dataFormType);
         outerloop: while (true) {
             int eventType = parser.next();
             switch (eventType) {
@@ -91,14 +93,24 @@ public class DataFormProvider extends PacketExtensionProvider<DataForm> {
 
     private FormField parseField(XmlPullParser parser) throws XmlPullParserException, IOException {
         final int initialDepth = parser.getDepth();
-        FormField formField = new FormField(parser.getAttributeValue("", "var"));
+        final String var = parser.getAttributeValue("", "var");
+        final FormField.Type type = FormField.Type.fromString(parser.getAttributeValue("", "type"));
+
+        final FormField formField;
+        if (type == FormField.Type.fixed) {
+            formField = new FormField();
+        } else {
+            formField = new FormField(var);
+            formField.setType(type);
+        }
         formField.setLabel(parser.getAttributeValue("", "label"));
-        formField.setType(parser.getAttributeValue("", "type"));
+
         outerloop: while (true) {
             int eventType = parser.next();
             switch (eventType) {
             case XmlPullParser.START_TAG:
                 String name = parser.getName();
+                String namespace = parser.getNamespace();
                 switch (name) {
                 case "desc":
                     formField.setDescription(parser.nextText());
@@ -111,6 +123,12 @@ public class DataFormProvider extends PacketExtensionProvider<DataForm> {
                     break;
                 case "option":
                     formField.addOption(parseOption(parser));
+                    break;
+                // See XEP-122 Data Forms Validation
+                case ValidateElement.ELEMENT:
+                    if (namespace.equals(ValidateElement.NAMESPACE)) {
+                        formField.setValidateElement(DataValidationProvider.parse(parser));
+                    }
                     break;
                 }
             case XmlPullParser.END_TAG:

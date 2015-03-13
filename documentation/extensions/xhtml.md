@@ -78,9 +78,10 @@ xhtmlText.appendOpenEmTag();
 xhtmlText.append("!!!!");
 xhtmlText.appendCloseEmTag();
 xhtmlText.appendCloseParagraphTag();
+xhtmlText.appendCloseBodyTag();
 
 // Add the XHTML text to the message
-XHTMLManager.addBody(msg, xhtmlText.toString());
+XHTMLManager.addBody(msg, xhtmlText);
 ```
 
 Send an XHTML Message
@@ -97,7 +98,7 @@ done. The last step is to send the message as you do with any other message.
 An XHTML message is like any regular message, therefore to send the message
 you can follow the usual steps you do in order to send a message. For example,
 to send a message as part of a chat just use the message **#send(Message)** of
-_**Chat**_ or you can use the message **#send(Packet)** of
+_**Chat**_ or you can use the message **#send(Stanza)** of
 _**XMPPConnection**_.
 
 **Example**
@@ -109,7 +110,7 @@ a chat.
 // Create a message to send
 Message msg = chat.createMessage();
 // Obtain the XHTML text to send from somewhere
-String xhtmlBody = getXHTMLTextToSend();
+XHTMLText xhtmlBody = getXHTMLTextToSend();
 
 // Add the XHTML text to the message
 XHTMLManager.addBody(msg, xhtmlBody);
@@ -131,7 +132,7 @@ XHTML bodies where each body should be for a different language.
 
 To get the XHTML bodies of a given message just send the message
 **#getBodies(Message)** to the class _**XHTMLManager**_. The answer of this
-message will be an _**Iterator**_ with the different XHTML bodies of the
+message will be an _**List**_ with the different XHTML bodies of the
 message or null if none.
 
 **Example**
@@ -142,17 +143,16 @@ XHTML bodies of any received message.
 ```
 // Create a listener for the chat and display any XHTML content
 PacketListener packetListener = new PacketListener() {
-public void processPacket(Packet packet) {
-Message message = (Message) packet;
-// Obtain the XHTML bodies of the message
-Iterator it = XHTMLManager.getBodies(message);
-if (it != null) {
-	// Display the bodies on the console
-	while (it.hasNext()) {
-		String body = (String) it.next();
-		System.out.println(body);
-	}
-}
+public void processPacket(Stanza packet) {
+    Message message = (Message) packet;
+    // Obtain the XHTML bodies of the message
+    List<CharSequence> bodies = XHTMLManager.getBodies(message);
+    if (bodies != null) {
+	    // Display the bodies on the console
+        for (CharSequence body : bodies) {
+		    System.out.println(body);
+        }
+    }
 };
 chat.addMessageListener(packetListener);
 ```

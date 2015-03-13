@@ -26,6 +26,7 @@ import org.jivesoftware.smack.XMPPException.XMPPErrorException;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smackx.disco.ServiceDiscoveryManager;
 import org.jivesoftware.smackx.xhtmlim.packet.XHTMLExtension;
+import org.jxmpp.jid.Jid;
 
 import java.util.List;
 
@@ -37,11 +38,10 @@ import java.util.List;
  * @author Gaston Dombiak
  */
 public class XHTMLManager {
-    // Enable the XHTML support on every established connection
-    // The ServiceDiscoveryManager class should have been already initialized
     static {
         XMPPConnectionRegistry.addConnectionCreationListener(new ConnectionCreationListener() {
             public void connectionCreated(XMPPConnection connection) {
+                // Enable the XHTML support on every established connection
                 XHTMLManager.setServiceEnabled(connection, true);
             }
         });
@@ -55,7 +55,7 @@ public class XHTMLManager {
      * @return an Iterator for the bodies in the message or null if none.
      */
     public static List<CharSequence> getBodies(Message message) {
-        XHTMLExtension xhtmlExtension = (XHTMLExtension) message.getExtension(XHTMLExtension.ELEMENT, XHTMLExtension.NAMESPACE);
+        XHTMLExtension xhtmlExtension = XHTMLExtension.from(message);
         if (xhtmlExtension != null)
             return xhtmlExtension.getBodies();
         else
@@ -66,17 +66,17 @@ public class XHTMLManager {
      * Adds an XHTML body to the message.
      *
      * @param message the message that will receive the XHTML body
-     * @param body the string to add as an XHTML body to the message
+     * @param xhtmlText the string to add as an XHTML body to the message
      */
-    public static void addBody(Message message, String body) {
-        XHTMLExtension xhtmlExtension = (XHTMLExtension) message.getExtension(XHTMLExtension.ELEMENT, XHTMLExtension.NAMESPACE);
+    public static void addBody(Message message, XHTMLText xhtmlText) {
+        XHTMLExtension xhtmlExtension = XHTMLExtension.from(message);
         if (xhtmlExtension == null) {
             // Create an XHTMLExtension and add it to the message
             xhtmlExtension = new XHTMLExtension();
             message.addExtension(xhtmlExtension);
         }
         // Add the required bodies to the message
-        xhtmlExtension.addBody(body);
+        xhtmlExtension.addBody(xhtmlText.toXML());
     }
 
     /**
@@ -129,9 +129,10 @@ public class XHTMLManager {
      * @throws XMPPErrorException 
      * @throws NoResponseException 
      * @throws NotConnectedException 
+     * @throws InterruptedException 
      */
-    public static boolean isServiceEnabled(XMPPConnection connection, String userID)
-                    throws NoResponseException, XMPPErrorException, NotConnectedException {
+    public static boolean isServiceEnabled(XMPPConnection connection, Jid userID)
+                    throws NoResponseException, XMPPErrorException, NotConnectedException, InterruptedException {
         return ServiceDiscoveryManager.getInstanceFor(connection).supportsFeature(userID, XHTMLExtension.NAMESPACE);
     }
 }

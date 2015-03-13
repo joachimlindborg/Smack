@@ -17,14 +17,14 @@
 package org.jivesoftware.smack.debugger;
 
 import org.jivesoftware.smack.ConnectionListener;
-import org.jivesoftware.smack.PacketListener;
+import org.jivesoftware.smack.StanzaListener;
 import org.jivesoftware.smack.XMPPConnection;
-import org.jivesoftware.smack.packet.Packet;
+import org.jivesoftware.smack.packet.Stanza;
 import org.jivesoftware.smack.util.ObservableReader;
 import org.jivesoftware.smack.util.ObservableWriter;
 import org.jivesoftware.smack.util.ReaderListener;
 import org.jivesoftware.smack.util.WriterListener;
-import org.jxmpp.util.XmppStringUtils;
+import org.jxmpp.jid.FullJid;
 
 import java.io.Reader;
 import java.io.Writer;
@@ -35,7 +35,7 @@ public abstract class AbstractDebugger implements SmackDebugger {
 
     private final XMPPConnection connection;
 
-    private final PacketListener listener;
+    private final StanzaListener listener;
     private final ConnectionListener connListener;
     private final ReaderListener readerListener;
     private final WriterListener writerListener;
@@ -50,7 +50,7 @@ public abstract class AbstractDebugger implements SmackDebugger {
         this.reader = new ObservableReader(reader);
         readerListener = new ReaderListener() {
             public void read(String str) {
-                log("RECV  (" + connection.getConnectionCounter() + "): " + str);
+                log("RECV (" + connection.getConnectionCounter() + "): " + str);
             }
         };
         this.reader.addReaderListener(readerListener);
@@ -67,8 +67,8 @@ public abstract class AbstractDebugger implements SmackDebugger {
         // Create a thread that will listen for all incoming packets and write them to
         // the GUI. This is what we call "interpreted" packet data, since it's the packet
         // data as Smack sees it and not as it's coming in as raw XML.
-        listener = new PacketListener() {
-            public void processPacket(Packet packet) {
+        listener = new StanzaListener() {
+            public void processPacket(Stanza packet) {
                 if (printInterpreted) {
                     log("RCV PKT (" + connection.getConnectionCounter() + "): " + packet.toXML());
                 }
@@ -80,8 +80,12 @@ public abstract class AbstractDebugger implements SmackDebugger {
                 log("XMPPConnection connected ("
                                 + connection.getConnectionCounter() + ")");
             }
-            public void authenticated(XMPPConnection connection) {
-                log("XMPPConnection authenticated (" + connection.getConnectionCounter() + ")");
+            public void authenticated(XMPPConnection connection, boolean resumed) {
+                String logString = "XMPPConnection authenticated (" + connection.getConnectionCounter() + ")";
+                if (resumed) {
+                    logString += " and resumed";
+                }
+                log(logString);
             }
             public void connectionClosed() {
                 log(
@@ -137,8 +141,9 @@ public abstract class AbstractDebugger implements SmackDebugger {
         return writer;
     }
 
-    public void userHasLogged(String user) {
-        String localpart = XmppStringUtils.parseLocalpart(user);
+    @Override
+    public void userHasLogged(FullJid user) {
+        String localpart = user.getLocalpart().toString();
         boolean isAnonymous = "".equals(localpart);
         String title =
                 "User logged (" + connection.getConnectionCounter() + "): "
@@ -147,7 +152,7 @@ public abstract class AbstractDebugger implements SmackDebugger {
                 + connection.getServiceName()
                 + ":"
                 + connection.getPort();
-        title += "/" + XmppStringUtils.parseResource(user);
+        title += "/" + user.getResourcepart();
         log(title);
         // Add the connection listener to the connection so that the debugger can be notified
         // whenever the connection is closed.
@@ -162,11 +167,11 @@ public abstract class AbstractDebugger implements SmackDebugger {
         return writer;
     }
 
-    public PacketListener getReaderListener() {
+    public StanzaListener getReaderListener() {
         return listener;
     }
 
-    public PacketListener getWriterListener() {
+    public StanzaListener getWriterListener() {
         return null;
     }
 }

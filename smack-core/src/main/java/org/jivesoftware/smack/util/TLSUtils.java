@@ -25,12 +25,14 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
+import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
-import org.jivesoftware.smack.ConnectionConfiguration.ConnectionConfigurationBuilder;
+import org.jivesoftware.smack.ConnectionConfiguration;
 import org.jivesoftware.smack.SmackException.SecurityNotPossibleException;
 
 
@@ -55,7 +57,7 @@ public class TLSUtils {
      * 
      * @param builder the configuration builder to apply this setting to
      */
-    public static <B extends ConnectionConfigurationBuilder<B,?>> B setTLSOnly(B builder) {
+    public static <B extends ConnectionConfiguration.Builder<B,?>> B setTLSOnly(B builder) {
         builder.setEnabledSSLProtocols(new String[] { PROTO_TLSV1_2,  PROTO_TLSV1_1, PROTO_TLSV1 });
         return builder;
     }
@@ -72,26 +74,52 @@ public class TLSUtils {
      * 
      * @param builder the configuration builder to apply this setting to
      */
-    public static <B extends ConnectionConfigurationBuilder<B,?>> B setSSLv3AndTLSOnly(B builder) {
+    public static <B extends ConnectionConfiguration.Builder<B,?>> B setSSLv3AndTLSOnly(B builder) {
         builder.setEnabledSSLProtocols(new String[] { PROTO_TLSV1_2,  PROTO_TLSV1_1, PROTO_TLSV1, PROTO_SSL3 });
         return builder;
     }
 
     /**
-     * Accept all SSL/TLS certificates.
+     * Accept all TLS certificates.
      * <p>
-     * <b>Warning</b> Use with care. This method make the Connection use
-     * {@link AcceptAllTrustManager}. Only use this method if you understand the implications.
+     * <b>Warning:</b> Use with care. This method make the Connection use {@link AcceptAllTrustManager} and essentially
+     * <b>invalidates all security guarantees provided by TLS</b>. Only use this method if you understand the
+     * implications.
      * </p>
      * 
-     * @param builder
+     * @param builder a connection configuration builder.
      * @throws NoSuchAlgorithmException
      * @throws KeyManagementException
+     * @return the given builder.
      */
-    public static <B extends ConnectionConfigurationBuilder<B,?>> B acceptAllCertificates(B builder) throws NoSuchAlgorithmException, KeyManagementException {
+    public static <B extends ConnectionConfiguration.Builder<B,?>> B acceptAllCertificates(B builder) throws NoSuchAlgorithmException, KeyManagementException {
         SSLContext context = SSLContext.getInstance(TLS);
         context.init(null, new TrustManager[] { new AcceptAllTrustManager() }, new SecureRandom());
         builder.setCustomSSLContext(context);
+        return builder;
+    }
+
+    private static final HostnameVerifier DOES_NOT_VERIFY_VERIFIER = new HostnameVerifier() {
+        @Override
+        public boolean verify(String hostname, SSLSession session) {
+            // This verifier doesn't verify the hostname, it always returns true.
+            return true;
+        }
+    };
+
+    /**
+     * Disable the hostname verification of TLS certificates.
+     * <p>
+     * <b>Warning:</b> Use with care. This disables hostname verification of TLS certificates and essentially
+     * <b>invalidates all security guarantees provided by TLS</b>. Only use this method if you understand the
+     * implications.
+     * </p>
+     * 
+     * @param builder a connection configuration builder.
+     * @return the given builder.
+     */
+    public static <B extends ConnectionConfiguration.Builder<B,?>> B disableHostnameVerificationForTlsCertificicates(B builder) {
+        builder.setHostnameVerifier(DOES_NOT_VERIFY_VERIFIER);
         return builder;
     }
 

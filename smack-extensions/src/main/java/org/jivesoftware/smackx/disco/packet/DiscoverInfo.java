@@ -18,6 +18,7 @@ package org.jivesoftware.smackx.disco.packet;
 
 import org.jivesoftware.smack.packet.IQ;
 import org.jivesoftware.smack.util.StringUtils;
+import org.jivesoftware.smack.util.TypedCloneable;
 import org.jivesoftware.smack.util.XmlStringBuilder;
 import org.jxmpp.util.XmppStringUtils;
 
@@ -38,7 +39,7 @@ import java.util.Set;
  *
  * @author Gaston Dombiak
  */
-public class DiscoverInfo extends IQ implements Cloneable {
+public class DiscoverInfo extends IQ implements TypedCloneable<DiscoverInfo> {
 
     public static final String ELEMENT = QUERY_ELEMENT;
     public static final String NAMESPACE = "http://jabber.org/protocol/disco#info";
@@ -266,7 +267,7 @@ public class DiscoverInfo extends IQ implements Cloneable {
      * attributes.
      * 
      */
-    public static class Identity implements Comparable<Identity>, Cloneable {
+    public static class Identity implements Comparable<Identity>, TypedCloneable<Identity> {
 
         private final String category;
         private final String type;
@@ -316,14 +317,8 @@ public class DiscoverInfo extends IQ implements Cloneable {
          * @param lang the entity's lang.
          */
         public Identity(String category, String type, String name, String lang) {
-            if (StringUtils.isNullOrEmpty(category)) {
-                throw new IllegalArgumentException("category cannot be null");
-            }
-            if (StringUtils.isNullOrEmpty(type)) {
-                throw new IllegalArgumentException("type cannot be null");
-            }
-            this.category = category;
-            this.type = type;
+            this.category = StringUtils.requireNotNullOrEmpty(category, "category cannot be null");
+            this.type = StringUtils.requireNotNullOrEmpty(type, "type cannot be null");
             this.key = XmppStringUtils.generateKey(category, type);
             this.name = name;
             this.lang = lang;
@@ -479,7 +474,7 @@ public class DiscoverInfo extends IQ implements Cloneable {
      * as well as specific feature types of interest, if any (e.g., for the purpose of feature 
      * negotiation).
      */
-    public static class Feature implements Cloneable {
+    public static class Feature implements TypedCloneable<Feature> {
 
         private final String variable;
 
@@ -493,9 +488,7 @@ public class DiscoverInfo extends IQ implements Cloneable {
          * @param variable the feature's variable.
          */
         public Feature(String variable) {
-            if (variable == null)
-                throw new IllegalArgumentException("variable cannot be null");
-            this.variable = variable;
+            this.variable = StringUtils.requireNotNullOrEmpty(variable, "variable cannot be null");
         }
 
         /**

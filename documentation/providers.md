@@ -1,14 +1,14 @@
-Provider Architecture: Packet Extensions and Custom IQ's
+Provider Architecture: Stanza Extensions and Custom IQ's
 ========================================================
 
-[Back](index.html)
+[Back](index.md)
 
 Introduction
 ------------
 
 The Smack provider architecture is a system for plugging in custom XML parsing
 of packet extensions and IQ packets. The standard [Smack
-Extensions](extensions/index.html) are built using the provider architecture.
+Extensions](extensions/index.md) are built using the provider architecture.
 There are two types of providers:
 
   * `IQProvider` -- parses IQ requests into Java objects.
@@ -17,13 +17,16 @@ There are two types of providers:
   * jabber:iq:roster
   * jabber:iq:register There are many more IQ types and extensions that are part of XMPP standards, and of course an endless number that can be added as custom extensions. To support this, an extensible parsing mechanism is provided via Smack and user build providers.
 
-Whenever a packet extension is found in a packet, parsing will be passed to
-the correct provider. Each provider can either implement the
-PacketExtensionProvider interface or be a standard Java Bean. In the former
-case, each extension provider is responsible for parsing the raw XML stream,
-via the [XML Pull Parser](http://www.xmlpull.org/), to contruct an object. In
-the latter case, bean introspection is used to try to automatically set the
-properties of the class using the values in the packet extension sub-element.
+Whenever a packet extension is found in a packet, parsing will be
+passed to the correct provider. Each provider must implement the
+PacketExtensionProvider interface. Each extension provider is
+responsible for parsing the raw XML stream, via the
+[XML Pull Parser](http://www.xmlpull.org/), to contruct an object.
+
+You can also create an introspection provider
+(`provider.IntrospectionProvider.PacketExtensionIntrospectionProvider`). Here,
+bean introspection is used to try to automatically set the properties
+of the class using the values in the packet extension sub-element.
 
 When no extension provider is registered for an element name and namespace
 combination, Smack will store all top-level elements of the sub-packet in the
@@ -58,19 +61,19 @@ or
 IQ Providers
 ------------
 
-The IQ provider class can either implement the IQProvider interface, or extend
-the IQ class. In the former case, each IQProvider is responsible for parsing
-the raw XML stream to create an IQ instance. In the latter case, bean
-introspection is used to try to automatically set properties of the IQ
-instance using the values found in the IQ packet XML. For example, an XMPP
-time packet resembles the following:
+The IQ provider class must implement the IQProvider interface. Each
+IQProvider is responsible for parsing the raw XML stream to create an
+IQ instance.
 
-### Introspection (DEPRECATED)
+You can also create an introspection provider
+(`provider.IntrospectionProvider.IQIntrospectionProvider`). Which
+uses, bean introspection to try to automatically set properties of the
+IQ instance using the values found in the IQ packet XML. For example,
+an XMPP time packet resembles the following:
 
-*Note*: This feature is deprecated, using introspection for parsing is not recommended.
-Instead implement your own provider like shown in the next section.
+### Introspection
 
-_Time Packet_
+_Time Stanza_
 
 
 	<iq type='result' to='joe@example.com' from='mary@example.com' id='time_1'>
@@ -110,6 +113,18 @@ _Time IQ Class_
 			display = timeDisplay;
 		}
 	}
+
+_Time Provider_
+
+```java
+public class TimeProvider extends IQIntrospectionProvider<Time> {
+
+    public TimeProvider() {
+        super(Time.class);
+    }
+
+}
+```
 
 The introspection service will automatically try to convert the String value
 from the XML into a boolean, int, long, float, double, or Class depending on
@@ -175,7 +190,7 @@ public class MyIQProvider extends IQProvider<MyIQ> {
 
 ### DiscoItemsProvider
 
-_Disco Items Packet_
+_Disco Items Stanza_
 
 
 
@@ -249,11 +264,11 @@ _Disco Items IQProvider_
 Extension Providers
 -------------------
 
-Packet extension providers are responsible for parsing packet extensions,
+Stanza extension providers are responsible for parsing packet extensions,
 which are child elements in a custom namespace of IQ, message and presence
 packets.
 
-_Pubsub Subscription Packet_
+_Pubsub Subscription Stanza_
 
 
 	<iq type='result' from='pubsub.shakespeare.lit' to='francisco@denmark.lit/barracks' id='sub1'>

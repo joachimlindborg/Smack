@@ -18,14 +18,13 @@
 package org.jivesoftware.smack.provider;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.jivesoftware.smack.SmackConfiguration;
 import org.jivesoftware.smack.packet.IQ;
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smack.util.StringUtils;
 import org.jxmpp.util.XmppStringUtils;
 
@@ -110,11 +109,9 @@ import org.jxmpp.util.XmppStringUtils;
  */
 public final class ProviderManager {
 
-    private static final Map<String, PacketExtensionProvider<PacketExtension>> extensionProviders = new ConcurrentHashMap<String, PacketExtensionProvider<PacketExtension>>();
+    private static final Map<String, ExtensionElementProvider<ExtensionElement>> extensionProviders = new ConcurrentHashMap<String, ExtensionElementProvider<ExtensionElement>>();
     private static final Map<String, IQProvider<IQ>> iqProviders = new ConcurrentHashMap<String, IQProvider<IQ>>();
-    private static final Map<String, Class<?>> extensionIntrospectionProviders = new ConcurrentHashMap<String, Class<?>>();
-    private static final Map<String, Class<?>> iqIntrospectionProviders = new ConcurrentHashMap<String, Class<?>>();
-    private static final Map<String, PacketExtensionProvider<PacketExtension>> streamFeatureProviders = new ConcurrentHashMap<String, PacketExtensionProvider<PacketExtension>>();
+    private static final Map<String, ExtensionElementProvider<ExtensionElement>> streamFeatureProviders = new ConcurrentHashMap<String, ExtensionElementProvider<ExtensionElement>>();
 
     static {
         // Ensure that Smack is initialized by calling getVersion, so that user
@@ -141,7 +138,7 @@ public final class ProviderManager {
         if (loader.getStreamFeatureProviderInfo() != null) {
             for (StreamFeatureProviderInfo info : loader.getStreamFeatureProviderInfo()) {
                 addStreamFeatureProvider(info.getElementName(), info.getNamespace(),
-                                (PacketExtensionProvider<PacketExtension>) info.getProvider());
+                                (ExtensionElementProvider<ExtensionElement>) info.getProvider());
             }
         }
     }
@@ -171,11 +168,6 @@ public final class ProviderManager {
         return iqProviders.get(key);
     }
 
-    public static Class<?> getIQIntrospectionProvider(String elementName, String namespace) {
-        String key = getKey(elementName, namespace);
-        return iqIntrospectionProviders.get(key);
-    }
-
     /**
      * Returns an unmodifiable collection of all IQProvider instances. Each object
      * in the collection will either be an IQProvider instance, or a Class object
@@ -183,11 +175,10 @@ public final class ProviderManager {
      *
      * @return all IQProvider instances.
      */
-    public static List<Object> getIQProviders() {
-        List<Object> providers = new ArrayList<Object>(iqProviders.size() + iqIntrospectionProviders.size());
+    public static List<IQProvider<IQ>> getIQProviders() {
+        List<IQProvider<IQ>> providers = new ArrayList<>(iqProviders.size());
         providers.addAll(iqProviders.values());
-        providers.addAll(iqIntrospectionProviders.values());
-        return Collections.unmodifiableList(providers);
+        return providers;
     }
 
     /**
@@ -208,11 +199,8 @@ public final class ProviderManager {
         String key = removeIQProvider(elementName, namespace);
         if (provider instanceof IQProvider) {
             iqProviders.put(key, (IQProvider<IQ>) provider);
-        } else if (provider instanceof Class && IQ.class.isAssignableFrom((Class<?>) provider)) {
-            iqIntrospectionProviders.put(key, (Class<?>) provider);
         } else {
-            throw new IllegalArgumentException("Provider must be an IQProvider " +
-                            "or a Class instance sublcassing IQ.");
+            throw new IllegalArgumentException("Provider must be an IQProvider");
         }
     }
 
@@ -228,7 +216,6 @@ public final class ProviderManager {
     public static String removeIQProvider(String elementName, String namespace) {
         String key = getKey(elementName, namespace);
         iqProviders.remove(key);
-        iqIntrospectionProviders.remove(key);
         return key;
     }
 
@@ -251,14 +238,9 @@ public final class ProviderManager {
      * @param namespace namespace associated with extension provider.
      * @return the extenion provider.
      */
-    public static PacketExtensionProvider<PacketExtension> getExtensionProvider(String elementName, String namespace) {
+    public static ExtensionElementProvider<ExtensionElement> getExtensionProvider(String elementName, String namespace) {
         String key = getKey(elementName, namespace);
         return extensionProviders.get(key);
-    }
-
-    public static Class<?> getExtensionIntrospectionProvider(String elementName, String namespace) {
-        String key = getKey(elementName, namespace);
-        return extensionIntrospectionProviders.get(key);
     }
 
     /**
@@ -277,13 +259,10 @@ public final class ProviderManager {
         validate(elementName, namespace);
         // First remove existing providers
         String key = removeExtensionProvider(elementName, namespace);
-        if (provider instanceof PacketExtensionProvider) {
-            extensionProviders.put(key, (PacketExtensionProvider<PacketExtension>) provider);
-        } else if (provider instanceof Class && PacketExtension.class.isAssignableFrom((Class<?>) provider)) {
-            extensionIntrospectionProviders.put(key, (Class<?>) provider);
+        if (provider instanceof ExtensionElementProvider) {
+            extensionProviders.put(key, (ExtensionElementProvider<ExtensionElement>) provider);
         } else {
-            throw new IllegalArgumentException("Provider must be a PacketExtensionProvider " +
-                            "or a Class instance.");
+            throw new IllegalArgumentException("Provider must be a PacketExtensionProvider");
         }
     }
 
@@ -299,7 +278,6 @@ public final class ProviderManager {
     public static String removeExtensionProvider(String elementName, String namespace) {
         String key = getKey(elementName, namespace);
         extensionProviders.remove(key);
-        extensionIntrospectionProviders.remove(key);
         return key;
     }
 
@@ -310,19 +288,18 @@ public final class ProviderManager {
      *
      * @return all PacketExtensionProvider instances.
      */
-    public static List<Object> getExtensionProviders() {
-        List<Object> providers = new ArrayList<Object>(extensionProviders.size() + extensionIntrospectionProviders.size());
+    public static List<ExtensionElementProvider<ExtensionElement>> getExtensionProviders() {
+        List<ExtensionElementProvider<ExtensionElement>> providers = new ArrayList<>(extensionProviders.size());
         providers.addAll(extensionProviders.values());
-        providers.addAll(extensionIntrospectionProviders.values());
-        return Collections.unmodifiableList(providers);
+        return providers;
     }
 
-    public static PacketExtensionProvider<PacketExtension> getStreamFeatureProvider(String elementName, String namespace) {
+    public static ExtensionElementProvider<ExtensionElement> getStreamFeatureProvider(String elementName, String namespace) {
         String key = getKey(elementName, namespace);
         return streamFeatureProviders.get(key);
     }
 
-    public static void addStreamFeatureProvider(String elementName, String namespace, PacketExtensionProvider<PacketExtension> provider) {
+    public static void addStreamFeatureProvider(String elementName, String namespace, ExtensionElementProvider<ExtensionElement> provider) {
         validate(elementName, namespace);
         String key = getKey(elementName, namespace);
         streamFeatureProviders.put(key, provider);

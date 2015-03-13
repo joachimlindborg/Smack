@@ -18,14 +18,14 @@
 package org.jivesoftware.smackx.muc.packet;
 
 import org.jivesoftware.smack.packet.NamedElement;
-import org.jivesoftware.smack.packet.Packet;
+import org.jivesoftware.smack.packet.Stanza;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import org.jivesoftware.smack.packet.PacketExtension;
+import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smack.util.XmlStringBuilder;
 
 /**
@@ -34,7 +34,7 @@ import org.jivesoftware.smack.util.XmlStringBuilder;
  *
  * @author Gaston Dombiak
  */
-public class MUCUser implements PacketExtension {
+public class MUCUser implements ExtensionElement {
 
     public static final String ELEMENT = "x";
     public static final String NAMESPACE = MUCInitialPresence.NAMESPACE + "#user";
@@ -63,9 +63,7 @@ public class MUCUser implements PacketExtension {
         xml.optElement(getDecline());
         xml.optElement(getItem());
         xml.optElement("password", getPassword());
-        for (Status status : statusCodes) {
-            xml.element(status);
-        }
+        xml.append(statusCodes);
         xml.optElement(getDestroy());
         xml.closeElement(this);
         return xml;
@@ -118,6 +116,19 @@ public class MUCUser implements PacketExtension {
      */
     public Set<Status> getStatus() {
         return statusCodes;
+    }
+
+    /**
+     * Returns true if this MUCUser instance has also {@link Status} information.
+     * <p>
+     * If <code>true</code> is returned, then {@link #getStatus()} will return a non-empty set.
+     * </p>
+     *
+     * @return true if this MUCUser has status information.
+     * @since 4.1
+     */
+    public boolean hasStatus() {
+        return !statusCodes.isEmpty();
     }
 
     /**
@@ -206,10 +217,10 @@ public class MUCUser implements PacketExtension {
      *
      * @param packet
      * @return the MUCUser PacketExtension or {@code null}
-     * @deprecated use {@link #from(Packet)} instead
+     * @deprecated use {@link #from(Stanza)} instead
      */
     @Deprecated
-    public static MUCUser getFrom(Packet packet) {
+    public static MUCUser getFrom(Stanza packet) {
         return from(packet);
     }
 
@@ -219,7 +230,7 @@ public class MUCUser implements PacketExtension {
      * @param packet
      * @return the MUCUser PacketExtension or {@code null}
      */
-    public static MUCUser from(Packet packet) {
+    public static MUCUser from(Stanza packet) {
         return packet.getExtension(ELEMENT, NAMESPACE);
     }
 

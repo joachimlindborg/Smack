@@ -17,17 +17,17 @@
 
 package org.jivesoftware.smack.filter;
 
-import org.jivesoftware.smack.packet.Packet;
 import org.jivesoftware.smack.packet.Message;
+import org.jivesoftware.smack.util.StringUtils;
 
 /**
  * Filters for message packets with a particular thread value.
  *
  * @author Matt Tucker
  */
-public class ThreadFilter implements PacketFilter {
+public class ThreadFilter extends FlexibleStanzaTypeFilter<Message> implements StanzaFilter {
 
-    private String thread;
+    private final String thread;
 
     /**
      * Creates a new thread filter using the specified thread value.
@@ -35,13 +35,17 @@ public class ThreadFilter implements PacketFilter {
      * @param thread the thread value to filter for.
      */
     public ThreadFilter(String thread) {
-        if (thread == null) {
-            throw new IllegalArgumentException("Thread must not be null.");
-        }
+        StringUtils.requireNotNullOrEmpty(thread, "Thread must not be null or empty.");
         this.thread = thread;
     }
 
-    public boolean accept(Packet packet) {
-        return packet instanceof Message && thread.equals(((Message) packet).getThread());
+    @Override
+    protected boolean acceptSpecific(Message message) {
+        return thread.equals(message.getThread());
+    }
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + ": thread=" + thread;
     }
 }

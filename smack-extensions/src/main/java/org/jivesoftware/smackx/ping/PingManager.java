@@ -1,6 +1,6 @@
 /**
  *
- * Copyright 2012-2014 Florian Schmaus
+ * Copyright 2012-2015 Florian Schmaus
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,38 +21,41 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.jivesoftware.smack.AbstractConnectionListener;
+import org.jivesoftware.smack.AbstractConnectionClosedListener;
 import org.jivesoftware.smack.SmackException;
 import org.jivesoftware.smack.SmackException.NoResponseException;
 import org.jivesoftware.smack.SmackException.NotConnectedException;
 import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.ConnectionCreationListener;
 import org.jivesoftware.smack.Manager;
-import org.jivesoftware.smack.PacketListener;
 import org.jivesoftware.smack.XMPPConnectionRegistry;
 import org.jivesoftware.smack.XMPPException;
 import org.jivesoftware.smack.XMPPException.XMPPErrorException;
-import org.jivesoftware.smack.filter.AndFilter;
-import org.jivesoftware.smack.filter.IQTypeFilter;
-import org.jivesoftware.smack.filter.PacketFilter;
-import org.jivesoftware.smack.filter.PacketTypeFilter;
-import org.jivesoftware.smack.packet.Packet;
+import org.jivesoftware.smack.iqrequest.AbstractIqRequestHandler;
+import org.jivesoftware.smack.iqrequest.IQRequestHandler.Mode;
+import org.jivesoftware.smack.packet.IQ;
+import org.jivesoftware.smack.packet.IQ.Type;
+import org.jivesoftware.smack.util.SmackExecutorThreadFactory;
 import org.jivesoftware.smackx.disco.ServiceDiscoveryManager;
 import org.jivesoftware.smackx.ping.packet.Ping;
+import org.jxmpp.jid.Jid;
 
 /**
  * Implements the XMPP Ping as defined by XEP-0199. The XMPP Ping protocol allows one entity to
  * ping any other entity by simply sending a ping to the appropriate JID. PingManger also
- * periodically sends XMPP pings to the server every 30 minutes to avoid NAT timeouts and to test
+ * periodically sends XMPP pings to the server to avoid NAT timeouts and to test
  * the connection status.
+ * <p>
+ * The default server ping interval is 30 minutes and can be modified with
+ * {@link #setDefaultPingInterval(int)} and {@link #setPingInterval(int)}.
+ * </p>
  * 
  * @author Florian Schmaus
  * @see <a href="http://www.xmpp.org/extensions/xep-0199.html">XEP-0199:XMPP Ping</a>
@@ -60,11 +63,7 @@ import org.jivesoftware.smackx.ping.packet.Ping;
 public class PingManager extends Manager {
     private static final Logger LOGGER = Logger.getLogger(PingManager.class.getName());
 
-    private static final Map<XMPPConnection, PingManager> INSTANCES = Collections
-            .synchronizedMap(new WeakHashMap<XMPPConnection, PingManager>());
-
-    private static final PacketFilter PING_PACKET_FILTER = new AndFilter(
-                    new PacketTypeFilter(Ping.class), IQTypeFilter.GET);
+    private static final Map<XMPPConnection, PingManager> INSTANCES = new WeakHashMap<XMPPConnection, PingManager>();
 
     static {
         XMPPConnectionRegistry.addConnectionCreationListener(new ConnectionCreationListener() {
@@ -86,10 +85,14 @@ public class PingManager extends Manager {
         PingManager pingManager = INSTANCES.get(connection);
         if (pingManager == null) {
             pingManager = new PingManager(connection);
+            INSTANCES.put(connection, pingManager);
         }
         return pingManager;
     }
 
+    /**
+     * The default ping interval in seconds used by new PingManager instances. The default is 30 minutes.
+     */
     private static int defaultPingInterval = 60 * 30;
 
     /**
@@ -106,22 +109,6 @@ public class PingManager extends Manager {
 
     private final ScheduledExecutorService executorService;
 
-    private static class PingExecutorThreadFactory implements ThreadFactory {
-        private final int connectionCounterValue;
-
-        public PingExecutorThreadFactory(int connectionCounterValue) {
-            this.connectionCounterValue = connectionCounterValue;
-        }
-
-        @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "Smack Scheduled Ping Executor Service ("
-                            + connectionCounterValue + ")");
-            thread.setDaemon(true);
-            return thread;
-        }
-
-    }
     /**
      * The interval in seconds between pings are send to the users server.
      */
@@ -131,31 +118,25 @@ public class PingManager extends Manager {
 
     private PingManager(XMPPConnection connection) {
         super(connection);
-        executorService = new ScheduledThreadPoolExecutor(1,
-                        new PingExecutorThreadFactory(connection.getConnectionCounter()));
+        executorService = Executors.newSingleThreadScheduledExecutor(
+                        new SmackExecutorThreadFactory(connection.getConnectionCounter(), "Ping"));
         ServiceDiscoveryManager sdm = ServiceDiscoveryManager.getInstanceFor(connection);
         sdm.addFeature(Ping.NAMESPACE);
-        INSTANCES.put(connection, this);
 
-        connection.addPacketListener(new PacketListener() {
-            // Send a Pong for every Ping
+        connection.registerIQRequestHandler(new AbstractIqRequestHandler(Ping.ELEMENT, Ping.NAMESPACE, Type.get, Mode.async) {
             @Override
-            public void processPacket(Packet packet) throws NotConnectedException {
-                Ping ping = (Ping) packet;
-                connection().sendPacket(ping.getPong());
+            public IQ handleIQRequest(IQ iqRequest) {
+                Ping ping = (Ping) iqRequest;
+                return ping.getPong();
             }
-        }, PING_PACKET_FILTER);
-        connection.addConnectionListener(new AbstractConnectionListener() {
+        });
+        connection.addConnectionListener(new AbstractConnectionClosedListener() {
             @Override
-            public void authenticated(XMPPConnection connection) {
+            public void authenticated(XMPPConnection connection, boolean resumed) {
                 maybeSchedulePingServerTask();
             }
             @Override
-            public void connectionClosed() {
-                maybeStopPingServerTask();
-            }
-            @Override
-            public void connectionClosedOnError(Exception arg0) {
+            public void connectionTerminated() {
                 maybeStopPingServerTask();
             }
         });
@@ -167,7 +148,7 @@ public class PingManager extends Manager {
      * to this, is a server ping, which will always return true if the server is reachable, 
      * event if there is an error on the ping itself (i.e. ping not supported).
      * <p>
-     * Use {@link #isPingSupported(String)} to determine if XMPP Ping is supported 
+     * Use {@link #isPingSupported(Jid)} to determine if XMPP Ping is supported 
      * by the entity.
      * 
      * @param jid The id of the entity the ping is being sent to
@@ -175,8 +156,9 @@ public class PingManager extends Manager {
      * @return true if a reply was received from the entity, false otherwise.
      * @throws NoResponseException if there was no response from the jid.
      * @throws NotConnectedException 
+     * @throws InterruptedException 
      */
-    public boolean ping(String jid, long pingTimeout) throws NotConnectedException, NoResponseException {
+    public boolean ping(Jid jid, long pingTimeout) throws NotConnectedException, NoResponseException, InterruptedException {
         final XMPPConnection connection = connection();
         // Packet collector for IQs needs an connection that was at least authenticated once,
         // otherwise the client JID will be null causing an NPE
@@ -194,15 +176,16 @@ public class PingManager extends Manager {
     }
 
     /**
-     * Same as calling {@link #ping(String, long)} with the defaultpacket reply 
+     * Same as calling {@link #ping(Jid, long)} with the defaultpacket reply 
      * timeout.
      * 
      * @param jid The id of the entity the ping is being sent to
      * @return true if a reply was received from the entity, false otherwise.
      * @throws NotConnectedException
      * @throws NoResponseException if there was no response from the jid.
+     * @throws InterruptedException 
      */
-    public boolean ping(String jid) throws NotConnectedException, NoResponseException {
+    public boolean ping(Jid jid) throws NotConnectedException, NoResponseException, InterruptedException {
         return ping(jid, connection().getPacketReplyTimeout());
     }
 
@@ -214,8 +197,9 @@ public class PingManager extends Manager {
      * @throws XMPPErrorException An XMPP related error occurred during the request 
      * @throws NoResponseException if there was no response from the jid.
      * @throws NotConnectedException 
+     * @throws InterruptedException 
      */
-    public boolean isPingSupported(String jid) throws NoResponseException, XMPPErrorException, NotConnectedException  {
+    public boolean isPingSupported(Jid jid) throws NoResponseException, XMPPErrorException, NotConnectedException, InterruptedException  {
         return ServiceDiscoveryManager.getInstanceFor(connection()).supportsFeature(jid, Ping.NAMESPACE);
     }
 
@@ -223,13 +207,14 @@ public class PingManager extends Manager {
      * Pings the server. This method will return true if the server is reachable.  It
      * is the equivalent of calling <code>ping</code> with the XMPP domain.
      * <p>
-     * Unlike the {@link #ping(String)} case, this method will return true even if 
-     * {@link #isPingSupported(String)} is false.
+     * Unlike the {@link #ping(Jid)} case, this method will return true even if 
+     * {@link #isPingSupported(Jid)} is false.
      * 
      * @return true if a reply was received from the server, false otherwise.
      * @throws NotConnectedException
+     * @throws InterruptedException 
      */
-    public boolean pingMyServer() throws NotConnectedException {
+    public boolean pingMyServer() throws NotConnectedException, InterruptedException {
         return pingMyServer(true);
     }
 
@@ -237,14 +222,15 @@ public class PingManager extends Manager {
      * Pings the server. This method will return true if the server is reachable.  It
      * is the equivalent of calling <code>ping</code> with the XMPP domain.
      * <p>
-     * Unlike the {@link #ping(String)} case, this method will return true even if
-     * {@link #isPingSupported(String)} is false.
+     * Unlike the {@link #ping(Jid)} case, this method will return true even if
+     * {@link #isPingSupported(Jid)} is false.
      *
      * @param notifyListeners Notify the PingFailedListener in case of error if true
      * @return true if the user's server could be pinged.
      * @throws NotConnectedException
+     * @throws InterruptedException 
      */
-    public boolean pingMyServer(boolean notifyListeners) throws NotConnectedException {
+    public boolean pingMyServer(boolean notifyListeners) throws NotConnectedException, InterruptedException {
         return pingMyServer(notifyListeners, connection().getPacketReplyTimeout());
     }
 
@@ -252,15 +238,16 @@ public class PingManager extends Manager {
      * Pings the server. This method will return true if the server is reachable.  It
      * is the equivalent of calling <code>ping</code> with the XMPP domain.
      * <p>
-     * Unlike the {@link #ping(String)} case, this method will return true even if
-     * {@link #isPingSupported(String)} is false.
+     * Unlike the {@link #ping(Jid)} case, this method will return true even if
+     * {@link #isPingSupported(Jid)} is false.
      *
      * @param notifyListeners Notify the PingFailedListener in case of error if true
      * @param pingTimeout The time to wait for a reply in milliseconds
      * @return true if the user's server could be pinged.
      * @throws NotConnectedException
+     * @throws InterruptedException 
      */
-    public boolean pingMyServer(boolean notifyListeners, long pingTimeout) throws NotConnectedException {
+    public boolean pingMyServer(boolean notifyListeners, long pingTimeout) throws NotConnectedException, InterruptedException {
         boolean res;
         try {
             res = ping(connection().getServiceName(), pingTimeout);
@@ -276,9 +263,15 @@ public class PingManager extends Manager {
     }
 
     /**
-     * Set the interval between the server is automatic pinged. A negative value disables automatic server pings.
+     * Set the interval in seconds between a automated server ping is send. A negative value disables automatic server
+     * pings. All settings take effect immediately. If there is an active scheduled server ping it will be canceled and,
+     * if <code>pingInterval</code> is positive, a new one will be scheduled in pingInterval seconds.
+     * <p>
+     * If the ping fails after 3 attempts waiting the connections reply timeout for an answer, then the ping failed
+     * listeners will be invoked.
+     * </p>
      *
-     * @param pingInterval the interval between the ping
+     * @param pingInterval the interval in seconds between the automated server pings
      */
     public void setPingInterval(int pingInterval) {
         this.pingInterval = pingInterval;
@@ -383,8 +376,8 @@ public class PingManager extends Manager {
                 try {
                     res = pingMyServer(false);
                 }
-                catch (SmackException e) {
-                    LOGGER.log(Level.WARNING, "SmackError while pinging server", e);
+                catch (InterruptedException | SmackException e) {
+                    LOGGER.log(Level.WARNING, "Exception while pinging server", e);
                     res = false;
                 }
                 // stop when we receive a pong back
@@ -414,9 +407,13 @@ public class PingManager extends Manager {
 
     @Override
     protected void finalize() throws Throwable {
+        LOGGER.fine("finalizing PingManager: Shutting down executor service");
         try {
             executorService.shutdown();
-        } finally {
+        } catch (Throwable t) {
+            LOGGER.log(Level.WARNING, "finalize() threw throwable", t);
+        }
+        finally {
             super.finalize();
         }
     }
